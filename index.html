@@ -1977,6 +1977,7 @@ async function deleteRecord(idx){
 let ADMIN_ITEMS_CAT = 'FRESH';
 
 async function renderAdminItems(){
+  ADMIN_ITEMS_CAT = 'FRESH'; // รีเซ็ตเสมอ เนื่องจากแสดงเฉพาะ FRESH FOOD
   setTopbar('รายการสินค้า (Item Master)', 'เพิ่ม / แก้ไข / ลบ รายการสินค้าในระบบ');
   const content = document.getElementById('content');
 
@@ -1990,7 +1991,7 @@ async function renderAdminItems(){
         <button class="btn btn-primary" id="addItemBtn">+ เพิ่มรายการสินค้า</button>
       </div>
       <div class="tabs" id="itemCatTabs">
-        ${['FRESH','TRANSFER','NONFRESH'].map(c=>`<div class="tab ${c===ADMIN_ITEMS_CAT?'active':''}" data-cat="${c}">${CAT_LABELS[c]} (${ITEMS_BY_CAT[c].length})</div>`).join('')}
+        ${['FRESH'].map(c=>`<div class="tab ${c===ADMIN_ITEMS_CAT?'active':''}" data-cat="${c}">${CAT_LABELS[c]} (${ITEMS_BY_CAT[c].length})</div>`).join('')}
       </div>
       <div class="table-wrap mt-12" id="itemsTableWrap"></div>
     </div>
