@@ -572,6 +572,192 @@ tfoot td{
   .dash-donut svg{ margin:0 auto; }
 }
 
+/* ============================================================
+   Dashboard Redesign — FRESH FOOD Focus
+   ============================================================ */
+
+/* Hero Card */
+.dash-hero-wrap{
+  margin-bottom: 16px;
+}
+.dash-hero-card{
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: linear-gradient(135deg, #07407F 0%, #0B5FB4 55%, #1485D6 100%);
+  border-radius: var(--radius-lg);
+  padding: 28px 28px;
+  box-shadow: 0 8px 28px rgba(11,95,180,0.28);
+  overflow: hidden;
+  color: #fff;
+}
+.dash-hero-card::before{
+  content:'';
+  position:absolute;
+  width:240px; height:240px;
+  border-radius:50%;
+  background: rgba(255,255,255,0.07);
+  right:-60px; top:-80px;
+  pointer-events:none;
+}
+.dash-hero-card::after{
+  content:'';
+  position:absolute;
+  width:160px; height:160px;
+  border-radius:50%;
+  background: rgba(245,166,35,0.18);
+  left:-40px; bottom:-60px;
+  pointer-events:none;
+}
+.dash-hero-icon{
+  font-size: 44px;
+  flex-shrink: 0;
+  z-index:1;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.18));
+}
+.dash-hero-content{
+  flex: 1;
+  z-index:1;
+}
+.dash-hero-label{
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.82;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+.dash-hero-value{
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.dash-hero-unit{
+  font-size: 13px;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+.dash-hero-badge{
+  position: absolute;
+  top: 16px; right: 20px;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+  z-index:1;
+}
+@media (max-width:560px){
+  .dash-hero-value{ font-size: 30px; }
+  .dash-hero-icon{ font-size: 32px; }
+  .dash-hero-card{ padding: 20px 16px; }
+}
+
+/* KPI Row */
+.dash-kpi-row{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dash-kpi-card{
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: box-shadow .15s, transform .15s;
+}
+.dash-kpi-card:hover{
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.dash-kpi-icon{
+  font-size: 26px;
+  flex-shrink:0;
+}
+.dash-kpi-body{ flex:1; min-width:0; }
+.dash-kpi-label{
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.dash-kpi-value{
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-kpi-unit{
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+/* Progress Card */
+.dash-progress-card{
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 22px;
+}
+.dash-progress-head{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dash-progress-title{
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+.dash-progress-sub{
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.dash-progress-pct{
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.dash-progress-bar-wrap{ margin-bottom: 6px; }
+.dash-progress-bar-track{
+  height: 10px;
+  border-radius: 6px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+.dash-progress-bar-fill{
+  height: 100%;
+  border-radius: 6px;
+  transition: width .6s cubic-bezier(.34,1.56,.64,1);
+}
+.dash-progress-labels{
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
 </style>
 
 <!-- Firebase (compat SDK) -->
@@ -1017,7 +1203,7 @@ async function renderEntryView(){
       </div>
 
       <div class="tabs" id="catTabs">
-        ${['FRESH','TRANSFER','NONFRESH'].map(c=>`
+        ${['FRESH'].map(c=>`
           <div class="tab ${c===CURRENT_CAT?'active':''} ${DIRTY[c]?'dirty':''}" data-cat="${c}">
             ${CAT_LABELS[c]} <span class="dot"></span>
           </div>`).join('')}
@@ -1461,8 +1647,6 @@ async function renderAdminOverview(){
       </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="label">FRESH FOOD</div><div class="value">${ITEMS_BY_CAT.FRESH.length}</div><div class="sub">รายการ &middot; ตรวจนับ F&amp;V / BUT / FISH</div></div>
-        <div class="stat-card"><div class="label">TRANSFER</div><div class="value">${ITEMS_BY_CAT.TRANSFER.length}</div><div class="sub">รายการ &middot; ตรวจนับ F&amp;V / BUT / FISH</div></div>
-        <div class="stat-card"><div class="label">NON FRESH</div><div class="value">${ITEMS_BY_CAT.NONFRESH.length}</div><div class="sub">รายการ &middot; ตรวจนับจำนวนเดียว</div></div>
         <div class="stat-card"><div class="label">สาขาทั้งหมด</div><div class="value">${STORES_DATA.length}</div><div class="sub">สาขาในระบบ</div></div>
       </div>
     </div>
@@ -2243,6 +2427,7 @@ async function runAdminExport(){
   setLoading(btn, true, 'กำลัง Export...');
 
   try{
+    // ---- รวบรวม detail rows ----
     const rows = [];
     for(const dateStr of dates){
       const data = await dbGetOnce(`counts/${dateStr}`);
@@ -2263,9 +2448,58 @@ async function runAdminExport(){
 
     if(rows.length === 0){ toast('ไม่พบข้อมูลตามเงื่อนไขที่เลือก', 'error'); return; }
 
+    // ---- สร้าง Summary Sheet: รวมรายสาขา + หมวดหมู่ ----
+    // key = storeCode + '|' + cat
+    const summaryMap = {};
+    rows.forEach(r=>{
+      const key = r['รหัสผู้ใช้สาขา'] + '|' + r['หมวดหมู่'];
+      if(!summaryMap[key]){
+        summaryMap[key] = {
+          'รหัสผู้ใช้สาขา':     r['รหัสผู้ใช้สาขา'],
+          'เลขที่สาขา (Loc)':   r['เลขที่สาขา (Loc)'],
+          'ชื่อสาขา':           r['ชื่อสาขา'],
+          'หมวดหมู่':           r['หมวดหมู่'],
+          'รวมจำนวนตรวจนับ':   0,
+          'มูลค่ารวม (บาท)':   0
+        };
+      }
+      summaryMap[key]['รวมจำนวนตรวจนับ'] += Number(r['รวมจำนวนตรวจนับ']) || 0;
+      summaryMap[key]['มูลค่ารวม (บาท)'] += Number(r['มูลค่ารวม (บาท)']) || 0;
+    });
+
+    // เรียงตาม locNo แล้วตาม category
+    const catOrder = { 'FRESH FOOD': 0, 'TRANSFER': 1, 'NON FRESH': 2 };
+    const summaryRows = Object.values(summaryMap).sort((a,b)=>{
+      const la = Number(a['เลขที่สาขา (Loc)']) || 0;
+      const lb = Number(b['เลขที่สาขา (Loc)']) || 0;
+      if(la !== lb) return la - lb;
+      return (catOrder[a['หมวดหมู่']]||0) - (catOrder[b['หมวดหมู่']]||0);
+    });
+
+    // ปัดทศนิยม 2 ตำแหน่งให้ summary
+    summaryRows.forEach(r=>{
+      r['รวมจำนวนตรวจนับ'] = Math.round(r['รวมจำนวนตรวจนับ'] * 100) / 100;
+      r['มูลค่ารวม (บาท)'] = Math.round(r['มูลค่ารวม (บาท)'] * 100) / 100;
+    });
+
+    // แถว Grand Total สำหรับ summary
+    const grandQty = summaryRows.reduce((s,r)=> s + r['รวมจำนวนตรวจนับ'], 0);
+    const grandAmt = summaryRows.reduce((s,r)=> s + r['มูลค่ารวม (บาท)'], 0);
+    summaryRows.push({
+      'รหัสผู้ใช้สาขา':   '',
+      'เลขที่สาขา (Loc)': '',
+      'ชื่อสาขา':         'รวมทั้งหมด',
+      'หมวดหมู่':         '',
+      'รวมจำนวนตรวจนับ': Math.round(grandQty * 100) / 100,
+      'มูลค่ารวม (บาท)': Math.round(grandAmt * 100) / 100
+    });
+
     const filename = `PackagingCount_AllBranches_${from}_to_${to}.xlsx`;
-    exportRowsToExcel({ 'ข้อมูลตรวจนับ': rows }, filename);
-    toast(`Export สำเร็จ (${fmtNum(rows.length)} รายการ)`, 'success');
+    exportRowsToExcel({
+      'สรุปรายสาขา': summaryRows,
+      'ข้อมูลตรวจนับ': rows
+    }, filename);
+    toast(`Export สำเร็จ (${fmtNum(rows.length)} รายการ · ${fmtNum(summaryRows.length - 1)} สาขา/หมวด)`, 'success');
   }catch(err){
     console.error(err);
     toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
@@ -2396,7 +2630,7 @@ async function renderDashboardView(){
       <div class="card-head">
         <div>
           <div class="card-title">แดชบอร์ดสรุปข้อมูลการตรวจนับ</div>
-          <div class="muted">${isAdmin ? 'เลือกสาขาและช่วงเวลาที่ต้องการดูสรุปมูลค่า แยกตามหมวดหมู่' : 'สรุปมูลค่าการตรวจนับของสาขาคุณ แยกตามหมวดหมู่'}</div>
+          <div class="muted">${isAdmin ? 'เลือกสาขาและช่วงเวลาที่ต้องการดูสรุปมูลค่า Fresh Food' : 'สรุปมูลค่าการตรวจนับ Fresh Food ของสาขาคุณ'}</div>
         </div>
         <div class="tabs" id="dashModeTabs">
           <div class="tab ${DASH_MODE==='month'?'active':''}" data-mode="month">รายเดือน</div>
@@ -2531,73 +2765,91 @@ async function computeCategorySums(dates, storeFilter, isAdmin){
 function renderDashboardResult(result, totalDays, isAdmin, storeFilter){
   const bodyEl = document.getElementById('dashBody');
   const { sums, daysWithData, storeCount } = result;
-  const total = sums.FRESH + sums.TRANSFER + sums.NONFRESH;
-  const pctOf = (v)=> total > 0 ? (v/total*100) : 0;
+  // Show only FRESH value
+  const freshValue = sums.FRESH;
+  const avgPerDay = daysWithData > 0 ? freshValue / daysWithData : 0;
 
-  if(total === 0){
-    bodyEl.innerHTML = `<div class="text-soft" style="padding:40px;text-align:center;">
-      ไม่พบข้อมูลการตรวจนับในช่วงเวลาที่เลือก
-    </div>`;
+  if(freshValue === 0){
+    bodyEl.innerHTML = `
+      <div style="padding:56px 24px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">📦</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text-soft);">ไม่พบข้อมูลการตรวจนับในช่วงเวลาที่เลือก</div>
+        <div style="font-size:12.5px;color:var(--text-faint);margin-top:6px;">ลองเปลี่ยนช่วงวันที่หรือเลือกสาขาอื่น</div>
+      </div>`;
     return;
   }
 
-  const segments = [
-    { key:'FRESH',    label:'FRESH FOOD', value:sums.FRESH,    color:CAT_COLORS.FRESH },
-    { key:'TRANSFER', label:'TRANSFER',   value:sums.TRANSFER, color:CAT_COLORS.TRANSFER },
-    { key:'NONFRESH', label:'NON FRESH',  value:sums.NONFRESH, color:CAT_COLORS.NONFRESH },
-  ];
-
-  const donut = buildDonutChart(segments, { size:200, stroke:30, centerLabel:'รวมทั้งหมด', centerValue: fmtMoney(total) });
-
-  const legendHtml = segments.map(seg=>`
-    <div class="legend-item">
-      <span class="legend-dot" style="background:${seg.color}"></span>
-      <span class="legend-label">${seg.label}</span>
-      <span class="legend-value num">${fmtMoney(seg.value)} บาท</span>
-      <span class="legend-pct num">${pctOf(seg.value).toFixed(1)}%</span>
-    </div>
-  `).join('');
-
-  const statCards = segments.map(seg=>`
-    <div class="stat-card" style="border-top:4px solid ${seg.color};">
-      <div class="label">${seg.label}</div>
-      <div class="value">${fmtMoney(seg.value)}</div>
-      <div class="bar"><div style="width:${pctOf(seg.value).toFixed(1)}%;background:${seg.color};"></div></div>
-      <div class="sub">${pctOf(seg.value).toFixed(1)}% ของมูลค่ารวม &middot; บาท</div>
-    </div>
-  `).join('');
-
   let extraInfo = '';
+  let extraInfoShort = '';
   if(isAdmin && storeFilter === 'ALL'){
-    extraInfo = `สาขาที่มีข้อมูลในช่วงนี้ <b class="num">${fmtNum(storeCount)}</b> / ${fmtNum(STORES_DATA.length)} สาขา
-      &nbsp;&middot;&nbsp; วันที่มีการบันทึกข้อมูล <b class="num">${fmtNum(daysWithData)}</b> / ${fmtNum(totalDays)} วัน`;
+    extraInfo = `สาขาที่มีข้อมูล <b class="num">${fmtNum(storeCount)}</b> / ${fmtNum(STORES_DATA.length)} สาขา &nbsp;·&nbsp; วันที่มีข้อมูล <b class="num">${fmtNum(daysWithData)}</b> / ${fmtNum(totalDays)} วัน`;
+    extraInfoShort = `${storeCount} สาขา`;
   } else {
     const label = isAdmin ? escapeHtml(storeLabel(storeFilter)) : `${SESSION.locNo} - ${SESSION.storeName}`;
-    extraInfo = `สาขา <b>${label}</b> &nbsp;&middot;&nbsp; วันที่มีการบันทึกข้อมูล <b class="num">${fmtNum(daysWithData)}</b> / ${fmtNum(totalDays)} วัน`;
+    extraInfo = `สาขา <b>${label}</b> &nbsp;·&nbsp; วันที่มีข้อมูล <b class="num">${fmtNum(daysWithData)}</b> / ${fmtNum(totalDays)} วัน`;
+    extraInfoShort = label;
   }
 
+  const freshColor = CAT_COLORS.FRESH || '#1A9E6B';
+
   bodyEl.innerHTML = `
-    <div class="stat-grid">
-      ${statCards}
-      <div class="stat-card" style="border-top:4px solid var(--text);">
-        <div class="label">TOTAL (รวมทั้งหมด)</div>
-        <div class="value">${fmtMoney(total)}</div>
-        <div class="bar"><div style="width:100%;background:var(--text);"></div></div>
-        <div class="sub">100% &middot; บาท</div>
+    <!-- Hero KPI Card -->
+    <div class="dash-hero-wrap">
+      <div class="dash-hero-card">
+        <div class="dash-hero-icon">🥩</div>
+        <div class="dash-hero-content">
+          <div class="dash-hero-label">มูลค่า FRESH FOOD รวม</div>
+          <div class="dash-hero-value num">${fmtMoney(freshValue)}</div>
+          <div class="dash-hero-unit">บาท</div>
+        </div>
+        <div class="dash-hero-badge">FRESH FOOD</div>
       </div>
     </div>
 
-    <div class="card mt-16">
-      <div class="card-head">
-        <div class="card-title">สัดส่วนมูลค่าตามหมวดหมู่</div>
-      </div>
-      <div class="dash-donut-wrap">
-        <div class="dash-donut">${donut}</div>
-        <div class="flex-1" style="min-width:240px;">
-          ${legendHtml}
+    <!-- KPI Row -->
+    <div class="dash-kpi-row">
+      <div class="dash-kpi-card">
+        <div class="dash-kpi-icon">📅</div>
+        <div class="dash-kpi-body">
+          <div class="dash-kpi-label">วันที่มีข้อมูล</div>
+          <div class="dash-kpi-value num">${fmtNum(daysWithData)} <span class="dash-kpi-unit">/ ${fmtNum(totalDays)} วัน</span></div>
         </div>
       </div>
-      <div class="mt-12 text-faint" style="font-size:12px;">${extraInfo}</div>
+      <div class="dash-kpi-card">
+        <div class="dash-kpi-icon">📊</div>
+        <div class="dash-kpi-body">
+          <div class="dash-kpi-label">เฉลี่ยต่อวัน</div>
+          <div class="dash-kpi-value num">${fmtMoney(avgPerDay)} <span class="dash-kpi-unit">บาท/วัน</span></div>
+        </div>
+      </div>
+      ${isAdmin && storeFilter === 'ALL' ? `
+      <div class="dash-kpi-card">
+        <div class="dash-kpi-icon">🏪</div>
+        <div class="dash-kpi-body">
+          <div class="dash-kpi-label">สาขาที่มีข้อมูล</div>
+          <div class="dash-kpi-value num">${fmtNum(storeCount)} <span class="dash-kpi-unit">/ ${fmtNum(STORES_DATA.length)} สาขา</span></div>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <!-- Progress Visual -->
+    <div class="dash-progress-card">
+      <div class="dash-progress-head">
+        <div>
+          <div class="dash-progress-title">ความครอบคลุมข้อมูล</div>
+          <div class="dash-progress-sub">${extraInfo}</div>
+        </div>
+        <div class="dash-progress-pct num">${totalDays > 0 ? Math.round(daysWithData/totalDays*100) : 0}%</div>
+      </div>
+      <div class="dash-progress-bar-wrap">
+        <div class="dash-progress-bar-track">
+          <div class="dash-progress-bar-fill" style="width:${totalDays > 0 ? (daysWithData/totalDays*100).toFixed(1) : 0}%;background:${freshColor};"></div>
+        </div>
+      </div>
+      <div class="dash-progress-labels">
+        <span class="dash-progress-label-start">0 วัน</span>
+        <span class="dash-progress-label-end">${fmtNum(totalDays)} วัน</span>
+      </div>
     </div>
   `;
 }
