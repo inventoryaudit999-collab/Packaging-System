@@ -1193,12 +1193,13 @@ async function renderEntryView(){
           <div class="card-title">บันทึกการตรวจนับ Packing</div>
           <div class="muted">เลือกวันที่เพื่อบันทึก หรือแก้ไขข้อมูลย้อนหลัง ก่อนกด "บันทึกข้อมูล"</div>
         </div>
-        <div class="form-row">
+        <div class="form-row" style="align-items:flex-end;">
           <div class="form-group">
             <label>วันที่ตรวจนับ</label>
             <input type="date" id="entryDate" value="${CURRENT_DATE}" max="${todayStr()}">
           </div>
           <button class="btn btn-secondary" id="loadDateBtn">โหลดข้อมูล</button>
+          <button class="btn btn-accent" id="exportTemplateBtn">📥 Export Excel</button>
         </div>
       </div>
 
@@ -1235,6 +1236,7 @@ async function renderEntryView(){
   });
 
   document.getElementById('saveEntryBtn').addEventListener('click', saveCategory);
+  document.getElementById('exportTemplateBtn').addEventListener('click', exportEntryTemplate);
 
   await loadDateData();
 }
@@ -1471,6 +1473,81 @@ async function saveCategory(){
   }finally{
     setLoading(btn, false);
   }
+}
+
+/* ============================================================
+   EXPORT TEMPLATE — ส่งออกรายการสินค้าสำหรับใช้ตรวจนับ
+============================================================ */
+function exportEntryTemplate(){
+  const cat = CURRENT_CAT;
+  const items = ITEMS_BY_CAT[cat] || [];
+  if(items.length === 0){ toast('ไม่มีรายการสินค้าในหมวดนี้', 'error'); return; }
+
+  const fields = cat === 'NONFRESH' ? ['QTY'] : ['F&V', 'BUT', 'FISH'];
+  const dateLabel = CURRENT_DATE;
+
+  // สร้าง header row
+  const headerRow = {
+    '#':              '#',
+    'รหัสสินค้า':     'รหัสสินค้า',
+    'รายการสินค้า':   'รายการสินค้า',
+    'หน่วยนับ':       'หน่วยนับ',
+  };
+  fields.forEach(f => { headerRow[f] = f; });
+  headerRow['รวม']        = 'รวม';
+  headerRow['หมายเหตุ']   = 'หมายเหตุ';
+
+  // สร้างแถวข้อมูลสินค้า (ช่องตัวเลขว่างเปล่า)
+  const rows = items.map((item, idx) => {
+    const row = {
+      '#':              idx + 1,
+      'รหัสสินค้า':     item.code,
+      'รายการสินค้า':   item.desc,
+      'หน่วยนับ':       item.uomCount,
+    };
+    fields.forEach(f => { row[f] = ''; });
+    row['รวม']      = '';
+    row['หมายเหตุ'] = '';
+    return row;
+  });
+
+  // Sheet ชื่อตามวันที่และสาขา
+  const sheetName = `${SESSION.locNo}_${dateLabel}`.substring(0, 31);
+  const filename  = `Template_${SESSION.locNo}_${SESSION.storeName.replace(/[^a-zA-Z0-9ก-๙]/g,'_').substring(0,20)}_${dateLabel}.xlsx`;
+
+  // สร้าง workbook พร้อม title row บนสุด
+  const wb = XLSX.utils.book_new();
+
+  // แปลง rows → worksheet แล้วเพิ่ม title 2 แถวด้านบน
+  const titleRows = [
+    [`แบบฟอร์มตรวจนับ Packing — ${CAT_LABELS[cat]}`],
+    [`สาขา: ${SESSION.locNo} - ${SESSION.storeName}  |  วันที่: ${thaiDate(dateLabel)}`],
+    [], // แถวว่างคั่น
+  ];
+
+  // รวม title + header + data เข้าด้วยกันเป็น array of arrays
+  const colKeys = ['#', 'รหัสสินค้า', 'รายการสินค้า', 'หน่วยนับ', ...fields, 'รวม', 'หมายเหตุ'];
+  const headerArr = colKeys;
+  const dataArrs  = rows.map(r => colKeys.map(k => r[k]));
+
+  const allArrs = [...titleRows, headerArr, ...dataArrs];
+
+  const ws = XLSX.utils.aoa_to_sheet(allArrs);
+
+  // กำหนดความกว้างคอลัมน์
+  ws['!cols'] = [
+    { wch: 5  },   // #
+    { wch: 18 },   // รหัสสินค้า
+    { wch: 52 },   // รายการสินค้า
+    { wch: 14 },   // หน่วยนับ
+    ...fields.map(() => ({ wch: 10 })),
+    { wch: 10 },   // รวม
+    { wch: 20 },   // หมายเหตุ
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+  toast(`Export แบบฟอร์มตรวจนับเรียบร้อย (${items.length} รายการ)`, 'success');
 }
 
 /* ============================================================
