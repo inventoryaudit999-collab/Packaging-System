@@ -758,6 +758,91 @@ tfoot td{
   margin-top: 4px;
 }
 
+/* ============================================================
+   Dashboard — Split View: สาขายังไม่บันทึก / บันทึกแล้ว
+   ============================================================ */
+.dash-split-wrap{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid var(--border-soft);
+}
+.dash-split-col{
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  max-height: 480px;
+}
+.dash-split-pending{ border-right: 1px solid var(--border-soft); }
+.dash-split-head{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.dash-split-dot{
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dash-split-list{
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.dash-split-item{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.dash-split-item:last-child{ border-bottom: none; }
+.dash-split-loc{
+  font-family: var(--font-num);
+  font-weight: 700;
+  color: var(--text-soft);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  font-size: 11.5px;
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: center;
+}
+.dash-split-name{
+  flex: 1;
+  color: var(--text);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-split-time{
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.dash-split-empty{
+  padding: 32px 20px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+@media (max-width:720px){
+  .dash-split-wrap{ grid-template-columns: 1fr; }
+  .dash-split-pending{ border-right: none; border-bottom: 1px solid var(--border-soft); }
+  .dash-split-col{ max-height: 320px; }
+}
+
 </style>
 
 <!-- Firebase (compat SDK) -->
@@ -1068,6 +1153,83 @@ async function dbRemove(path){
   }
 }
 
+/* ============================================================
+   PRESENCE SYSTEM — ติดตามว่าผู้ใช้ใด online อยู่ตอนนี้
+   ใช้ Firebase '.info/connected' + onDisconnect() เพื่อความแม่นยำแบบ real-time
+   (ถ้าปิดเบราว์เซอร์/เน็ตหลุด Firebase จะลบสถานะ online ให้อัตโนมัติ)
+============================================================ */
+const HEARTBEAT_INTERVAL_MS = 30000; // อัปเดต lastSeen ทุก 30 วิ (เผื่อ onDisconnect ไม่ทำงานในบางกรณี เช่น browser crash)
+let HEARTBEAT_TIMER = null;
+
+function startPresenceTracking(){
+  if(!SESSION) return;
+  const userKey = SESSION.role === 'admin' ? `admin_${SESSION.username}` : SESSION.storeCode;
+  const path = `presence/${userKey}`;
+  PRESENCE_REF = db.ref(path);
+
+  const presenceInfo = {
+    online: true,
+    role: SESSION.role,
+    storeCode: SESSION.role === 'store' ? SESSION.storeCode : null,
+    storeName: SESSION.role === 'store' ? SESSION.storeName : ADMIN_ACCOUNT.name,
+    locNo: SESSION.role === 'store' ? SESSION.locNo : null,
+    username: SESSION.username,
+    sessionId: SESSION_ID,
+    loginAt: Date.now(),
+    lastSeen: Date.now(),
+    userAgent: (navigator.userAgent||'').slice(0,120)
+  };
+
+  // ฟัง '.info/connected' — ทุกครั้งที่ reconnect (เน็ตหลุดแล้วกลับมา) ต้อง set ใหม่ + ตั้ง onDisconnect ใหม่
+  db.ref('.info/connected').on('value', (snap)=>{
+    if(snap.val() === true){
+      // ตั้งคำสั่งล่วงหน้า: ถ้า client หลุดการเชื่อมต่อ (ปิดเบราว์เซอร์/เน็ตหลุด) ให้ Firebase ลบ presence ให้อัตโนมัติ
+      PRESENCE_REF.onDisconnect().remove().then(()=>{
+        PRESENCE_REF.set(presenceInfo).catch(e=> console.warn('[presence] set error:', e.message));
+      }).catch(e=> console.warn('[presence] onDisconnect setup error:', e.message));
+    }
+  });
+
+  // Heartbeat: อัปเดต lastSeen เป็นระยะ เผื่อกรณี onDisconnect ไม่ทำงาน (เช่น browser ค้าง/บังคับปิด)
+  clearInterval(HEARTBEAT_TIMER);
+  HEARTBEAT_TIMER = setInterval(()=>{
+    PRESENCE_REF && PRESENCE_REF.update({ lastSeen: Date.now() }).catch(()=>{});
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // ── ฟังคำสั่ง force-logout จาก admin ──
+  FORCE_LOGOUT_REF = db.ref(`forceLogout/${userKey}`);
+  FORCE_LOGOUT_REF.on('value', (snap)=>{
+    const val = snap.val();
+    if(val && val.sessionId === SESSION_ID){
+      // admin สั่งให้ session นี้ออกจากระบบ
+      toast('คุณถูกบังคับออกจากระบบโดยผู้ดูแลระบบ', 'error');
+      setTimeout(()=>{
+        stopPresenceTracking();
+        FORCE_LOGOUT_REF.remove().catch(()=>{});
+        clearSession();
+        SESSION = null;
+        location.reload();
+      }, 1200);
+    }
+  });
+}
+
+function stopPresenceTracking(){
+  clearInterval(HEARTBEAT_TIMER);
+  HEARTBEAT_TIMER = null;
+  try{ db.ref('.info/connected').off(); }catch(e){}
+  if(PRESENCE_REF){
+    PRESENCE_REF.onDisconnect().cancel().catch(()=>{});
+    PRESENCE_REF.remove().catch(()=>{});
+    PRESENCE_REF = null;
+  }
+  if(FORCE_LOGOUT_REF){
+    FORCE_LOGOUT_REF.off();
+    FORCE_LOGOUT_REF = null;
+  }
+}
+
+
 /* ---------- Item helpers ---------- */
 const CAT_LABELS = { FRESH: 'FRESH FOOD', TRANSFER: 'TRANSFER', NONFRESH: 'NON FRESH' };
 const CAT_FIELD_LABELS = { FV: 'F&V', BUT: 'BUT', FISH: 'FISH', QTY: 'จำนวน' };
@@ -1212,6 +1374,11 @@ const SESSION_KEY = 'pc_session_v1';
 
 let SESSION = null; // { role:'store'|'admin', username, storeCode, storeName, locNo }
 
+// ── PRESENCE SYSTEM: ใช้ติดตามว่า user ใด online อยู่ตอนนี้ + รองรับ force-logout จาก admin ──
+let PRESENCE_REF = null;        // ref ของ presence node ของ session นี้ (สำหรับ onDisconnect)
+let FORCE_LOGOUT_REF = null;    // ref ที่ฟังคำสั่ง force-logout จาก admin
+const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36); // ID เฉพาะของ session นี้ (กันชนกันถ้า login หลาย tab/อุปกรณ์)
+
 function findAccount(username, password){
   username = (username||'').trim();
   password = (password||'').trim();
@@ -1262,6 +1429,7 @@ function initLoginForm(){
   });
 
   document.getElementById('logoutBtn').addEventListener('click', ()=>{
+    stopPresenceTracking();
     clearSession();
     SESSION = null;
     location.reload();
@@ -1277,9 +1445,15 @@ function initLoginForm(){
 let CURRENT_MONTH = todayStr().slice(0,7);  // 'YYYY-MM'
 let CURRENT_CAT   = 'FRESH';
 let CURRENT_DATA  = { FRESH:{}, TRANSFER:{}, NONFRESH:{} };
+// snapshot ของข้อมูลที่บันทึกไว้แล้วจริง (จาก Firebase) ใช้เทียบว่าค่าที่กรอกเปลี่ยนไปจากเดิมหรือไม่
+let ENTRY_SAVED_BASELINE = { FRESH:{}, TRANSFER:{}, NONFRESH:{} };
 let CURRENT_META  = null;
 let DIRTY = { FRESH:false, TRANSFER:false, NONFRESH:false };
 let CURRENT_ACTIVE = true; // default: true เพื่อให้บันทึกได้ทันที (admin ต้องกด Inactive ถึงจะล็อก)
+
+// ── ค้นหา/กรองรายการในหน้าบันทึก ──
+let ENTRY_SEARCH_TEXT = '';      // คำค้นหาจากชื่อสินค้า/รหัสสินค้า
+let ENTRY_SUPPLIER_FILTER = '';  // กรองเฉพาะ Supplier ที่เลือก ('' = ทั้งหมด)
 
 // ============================================================
 // CONCURRENCY GUARD — ป้องกันการบันทึกซ้ำซ้อนพร้อมกัน
@@ -1358,6 +1532,23 @@ async function renderEntryView(){
       </div>
 
       <div class="mt-12" id="entryMeta"></div>
+
+      <!-- ── แถบค้นหา / กรอง Supplier เพื่อลดรายการก่อนบันทึก ── -->
+      <div class="form-row mt-12" style="align-items:flex-end;">
+        <div class="form-group flex-1" style="min-width:220px;">
+          <label>🔍 ค้นหารายการสินค้า (ชื่อ / รหัสสินค้า)</label>
+          <input type="text" id="entrySearchInput" placeholder="พิมพ์ชื่อสินค้าหรือรหัสสินค้า..." value="${escapeHtml(ENTRY_SEARCH_TEXT)}">
+        </div>
+        <div class="form-group" style="min-width:220px;">
+          <label>กรองตาม Supplier</label>
+          <select id="entrySupplierFilter">
+            <option value="">-- ทุก Supplier --</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary" id="entryClearFilterBtn">ล้างการค้นหา</button>
+      </div>
+      <div class="text-faint mt-8" id="entryFilterInfo" style="font-size:12px;"></div>
+
       <div class="table-wrap mt-12" id="entryTableWrap"></div>
 
       <div class="flex justify-between items-center mt-16" style="flex-wrap:wrap;gap:12px;">
@@ -1377,6 +1568,7 @@ async function renderEntryView(){
     t.addEventListener('click', ()=>{
       CURRENT_CAT = t.dataset.cat;
       content.querySelectorAll('#catTabs .tab').forEach(x=> x.classList.toggle('active', x===t));
+      populateSupplierFilterOptions(); // หมวดเปลี่ยน → Supplier ในหมวดอาจเปลี่ยนด้วย
       renderEntryTable(CURRENT_ACTIVE); // ใช้ค่า active ที่ cache ไว้
       const btn = document.getElementById('saveEntryBtn');
       if(btn) btn.textContent = `บันทึกข้อมูล (${CAT_LABELS[CURRENT_CAT]})`;
@@ -1386,7 +1578,53 @@ async function renderEntryView(){
   document.getElementById('saveEntryBtn').addEventListener('click', saveCategory);
   document.getElementById('exportTemplateBtn').addEventListener('click', exportEntryTemplate);
 
+  // ── ค้นหาแบบ real-time (debounce เล็กน้อยเพื่อความลื่นไหล) ──
+  let searchDebounce = null;
+  document.getElementById('entrySearchInput').addEventListener('input', e=>{
+    ENTRY_SEARCH_TEXT = e.target.value;
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(()=> renderEntryTable(CURRENT_ACTIVE), 200);
+  });
+
+  document.getElementById('entrySupplierFilter').addEventListener('change', e=>{
+    ENTRY_SUPPLIER_FILTER = e.target.value;
+    renderEntryTable(CURRENT_ACTIVE);
+  });
+
+  document.getElementById('entryClearFilterBtn').addEventListener('click', ()=>{
+    ENTRY_SEARCH_TEXT = '';
+    ENTRY_SUPPLIER_FILTER = '';
+    document.getElementById('entrySearchInput').value = '';
+    document.getElementById('entrySupplierFilter').value = '';
+    renderEntryTable(CURRENT_ACTIVE);
+  });
+
+  populateSupplierFilterOptions();
   await loadMonthData();
+}
+
+/* ============================================================
+   SUPPLIER FILTER — เติม dropdown ตาม Supplier ที่มีในหมวดปัจจุบัน
+============================================================ */
+function populateSupplierFilterOptions(){
+  const sel = document.getElementById('entrySupplierFilter');
+  if(!sel) return;
+  const items = ITEMS_BY_CAT[CURRENT_CAT] || [];
+  // รวบรวมชื่อ Supplier ที่ไม่ซ้ำกัน เรียงตามตัวอักษรไทย/อังกฤษ
+  const suppliers = Array.from(new Set(items.map(it=> (it.supplier||'').trim()).filter(Boolean)))
+    .sort((a,b)=> a.localeCompare(b, 'th'));
+
+  const prevValue = ENTRY_SUPPLIER_FILTER;
+  sel.innerHTML = `<option value="">-- ทุก Supplier --</option>` +
+    suppliers.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+
+  // คงค่าที่เคยเลือกไว้ ถ้า Supplier นั้นยังมีอยู่ในหมวดนี้
+  if(suppliers.includes(prevValue)){
+    sel.value = prevValue;
+  } else {
+    ENTRY_SUPPLIER_FILTER = '';
+    sel.value = '';
+  }
 }
 
 async function loadMonthData(){
@@ -1398,6 +1636,7 @@ async function loadMonthData(){
 
   // Step 1: แสดงตารางจาก embedded data ทันที (ไม่รอ Firebase)
   CURRENT_DATA = { FRESH:{}, TRANSFER:{}, NONFRESH:{} };
+  ENTRY_SAVED_BASELINE = { FRESH:{}, TRANSFER:{}, NONFRESH:{} };
   CURRENT_META = null;
   DIRTY = { FRESH:false, TRANSFER:false, NONFRESH:false };
 
@@ -1417,6 +1656,8 @@ async function loadMonthData(){
   try{
     const fbData = await dbGetOnce(`counts/${key}/${SESSION.storeCode}`) || {};
     CURRENT_DATA = { FRESH: fbData.FRESH||{}, TRANSFER: fbData.TRANSFER||{}, NONFRESH: fbData.NONFRESH||{} };
+    // เก็บ snapshot ไว้เป็น baseline สำหรับเทียบการเปลี่ยนแปลง (deep copy ป้องกันการแก้ทับโดยไม่ตั้งใจ)
+    ENTRY_SAVED_BASELINE = JSON.parse(JSON.stringify(CURRENT_DATA));
     CURRENT_META = fbData._meta || null;
     // Refresh ตาราง + meta หลังได้ข้อมูลจาก Firebase
     renderEntryMeta();
@@ -1468,13 +1709,13 @@ function renderEntryMeta(){
 
 function renderEntryTable(active=true){
   const cat = CURRENT_CAT;
-  const items = ITEMS_BY_CAT[cat] || [];
+  const allItems = ITEMS_BY_CAT[cat] || [];
   const fields = cat === 'NONFRESH' ? ['QTY'] : ['FV','BUT','FISH'];
   const wrap = document.getElementById('entryTableWrap');
 
   if(!wrap) return;
 
-  if(items.length === 0){
+  if(allItems.length === 0){
     // retry จาก embedded ITEMS_DATA ก่อนแสดง error
     if(typeof ITEMS_DATA !== 'undefined' && ITEMS_DATA.length > 0){
       console.warn('[renderEntryTable] ITEMS_BY_CAT empty — rebuilding from ITEMS_DATA');
@@ -1501,7 +1742,37 @@ function renderEntryTable(active=true){
     return renderEntryTable(active);
   }
 
+  // ── กรองรายการตามคำค้นหา + Supplier ที่เลือก ──
+  const searchTerm = (ENTRY_SEARCH_TEXT||'').trim().toLowerCase();
+  const items = allItems.filter(item=>{
+    if(ENTRY_SUPPLIER_FILTER && (item.supplier||'') !== ENTRY_SUPPLIER_FILTER) return false;
+    if(searchTerm){
+      const haystack = `${item.desc||''} ${item.code||''} ${item.supplier||''}`.toLowerCase();
+      if(!haystack.includes(searchTerm)) return false;
+    }
+    return true;
+  });
+
+  // แสดงข้อความบอกผลการกรอง
+  const filterInfoEl = document.getElementById('entryFilterInfo');
+  if(filterInfoEl){
+    if(searchTerm || ENTRY_SUPPLIER_FILTER){
+      filterInfoEl.innerHTML = `พบ <b class="num">${items.length}</b> จาก ${allItems.length} รายการ`;
+    } else {
+      filterInfoEl.innerHTML = '';
+    }
+  }
+
   const headCols = fields.map(f=>`<th class="text-right">${CAT_FIELD_LABELS[f]}</th>`).join('');
+
+  if(items.length === 0){
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;">
+      <div style="font-size:28px;margin-bottom:10px;">🔍</div>
+      <div style="font-size:13.5px;font-weight:700;color:var(--text-soft);">ไม่พบรายการที่ตรงกับการค้นหา</div>
+      <div class="text-faint mt-8" style="font-size:12px;">ลองเปลี่ยนคำค้นหา หรือเลือก Supplier อื่น</div>
+    </div>`;
+    return;
+  }
 
   const rows = items.map((item, idx)=>{
     const rec = CURRENT_DATA[cat][item.code];
@@ -1518,6 +1789,7 @@ function renderEntryTable(active=true){
     const amount = recordAmount(item, rec);
     return `<tr>
       <td class="num text-soft">${idx+1}</td>
+      <td class="nowrap text-soft" style="max-width:160px;white-space:normal;line-height:1.3;">${escapeHtml(item.supplier||'-')}</td>
       <td class="desc"><div>${escapeHtml(item.desc)}</div><div class="code">${escapeHtml(item.code)}</div></td>
       <td class="nowrap text-soft">${escapeHtml(item.uomCount)}</td>
       ${inputCols}
@@ -1529,11 +1801,11 @@ function renderEntryTable(active=true){
   wrap.innerHTML = `
     <table class="dtable">
       <thead><tr>
-        <th>#</th><th>รายการสินค้า</th><th>หน่วยนับ</th>${headCols}<th class="text-right">รวม</th><th class="text-right">มูลค่า (บาท)</th>
+        <th>#</th><th>Supplier</th><th>รายการสินค้า</th><th>หน่วยนับ</th>${headCols}<th class="text-right">รวม</th><th class="text-right">มูลค่า (บาท)</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
-        <td colspan="${3+fields.length}" class="text-right">รวมมูลค่าทั้งหมวด</td>
+        <td colspan="${4+fields.length}" class="text-right">รวมมูลค่าทั้งหมวด</td>
         <td class="text-right num" id="grandTotalQty">0</td>
         <td class="text-right num" id="grandTotalAmount">0.00</td>
       </tr></tfoot>
@@ -1551,10 +1823,17 @@ function onQtyInput(e){
   if(!item) return;
 
   const rec = {};
+  let hasAny = false;
   item.subFields.forEach(f=>{
     const v = document.getElementById(`inp_${cat}_${code}_${f}`).value;
+    if(v !== '') hasAny = true;
     rec[f] = v===''?0:(parseFloat(v)||0);
   });
+
+  // ── sync ค่าที่กรอกแบบ live เข้า CURRENT_DATA (in-memory) ──
+  // เพื่อให้ updateGrandTotals คำนวณยอดรวมได้ถูกต้อง แม้บางแถวถูกซ่อนจากการค้นหา/filter
+  if(!CURRENT_DATA[cat]) CURRENT_DATA[cat] = {};
+  CURRENT_DATA[cat][code] = { ...rec };
 
   const total = recordTotal(item, rec);
   const amount = recordAmount(item, rec);
@@ -1563,7 +1842,7 @@ function onQtyInput(e){
   if(totalEl) totalEl.textContent = fmtNum(total, 2);
   if(amountEl) amountEl.textContent = fmtMoney(amount);
 
-  const baseline = CURRENT_DATA[cat][code];
+  const baseline = ENTRY_SAVED_BASELINE[cat] && ENTRY_SAVED_BASELINE[cat][code];
   const baseVal = (baseline && baseline[field]!==undefined) ? Number(baseline[field]) : 0;
   const curVal = inp.value===''?0:(parseFloat(inp.value)||0);
   inp.classList.toggle('changed', curVal !== baseVal);
@@ -1580,14 +1859,31 @@ function updateGrandTotals(){
   let totalQty = 0, totalAmount = 0, filledCount = 0;
 
   items.forEach(item=>{
+    // อ่านจาก DOM ก่อนถ้าแถวนั้นแสดงอยู่ (กรณีกำลังพิมพ์ใน input ที่เพิ่งสร้าง)
+    // ถ้าแถวถูกซ่อนจาก filter ให้อ่านจาก CURRENT_DATA (in-memory) ที่ sync ไว้ใน onQtyInput แทน
     const rec = {};
     let has = false;
+    let usedDom = false;
     fields.forEach(f=>{
       const inp = document.getElementById(`inp_${cat}_${item.code}_${f}`);
-      const v = inp ? inp.value : '';
-      if(v !== '') has = true;
-      rec[f] = v===''?0:(parseFloat(v)||0);
+      if(inp){
+        usedDom = true;
+        const v = inp.value;
+        if(v !== '') has = true;
+        rec[f] = v===''?0:(parseFloat(v)||0);
+      }
     });
+    if(!usedDom){
+      // แถวไม่ได้แสดงในตาราง (ถูกกรองออก) — ใช้ค่าจาก memory
+      const memRec = CURRENT_DATA[cat] && CURRENT_DATA[cat][item.code];
+      if(memRec){
+        fields.forEach(f=>{
+          const v = Number(memRec[f]) || 0;
+          if(v !== 0) has = true;
+          rec[f] = v;
+        });
+      }
+    }
     if(has) filledCount++;
     totalQty += recordTotal(item, rec);
     totalAmount += recordAmount(item, rec);
@@ -1636,16 +1932,35 @@ async function saveCategory(){
 
   items.forEach(item=>{
     const fields = item.subFields;
+    // ── อ่านค่าจาก DOM ถ้าแถวนั้นแสดงอยู่ในตาราง (อาจมีการพิมพ์ล่าสุด) ──
+    // ถ้าแถวถูกซ่อนจาก filter/ค้นหา ให้อ่านจาก CURRENT_DATA (in-memory) ที่ sync ไว้แล้วใน onQtyInput
+    // ป้องกันไม่ให้รายการที่ถูกกรองออกถูกบันทึกเป็น 0 ทับข้อมูลเดิมโดยไม่ตั้งใจ
     let hasInput = false;
+    let usedDom = false;
     const rec = {};
     fields.forEach(f=>{
       const inp = document.getElementById(`inp_${cat}_${item.code}_${f}`);
-      const raw = inp ? inp.value : '';
-      if(raw !== '') hasInput = true;
-      rec[f] = raw===''?0:(parseFloat(raw)||0);
+      if(inp){
+        usedDom = true;
+        const raw = inp.value;
+        if(raw !== '') hasInput = true;
+        rec[f] = raw===''?0:(parseFloat(raw)||0);
+      }
     });
+    if(!usedDom){
+      // แถวไม่ได้แสดงในตารางตอนนี้ (ถูกกรองออก) — ใช้ค่าจาก memory state ที่มีอยู่แล้ว
+      const memRec = CURRENT_DATA[cat] && CURRENT_DATA[cat][item.code];
+      if(memRec){
+        fields.forEach(f=>{
+          const v = Number(memRec[f]) || 0;
+          if(v !== 0) hasInput = true;
+          rec[f] = v;
+        });
+      }
+    }
 
-    const baseline = CURRENT_DATA[cat][item.code];
+    // ── baseline คือค่าที่บันทึกไว้แล้วจริงใน Firebase (ไม่ใช่ live-edit state) ──
+    const baseline = ENTRY_SAVED_BASELINE[cat] && ENTRY_SAVED_BASELINE[cat][item.code];
     const recsEqual = (a,b)=>{
       if(!a && !b) return true;
       if(!a || !b) return false;
@@ -1719,6 +2034,8 @@ async function saveCategory(){
     }).catch(e=> console.warn('[saveCategory] log error:', e.message));
 
     CURRENT_DATA[cat] = newDataCat;
+    // sync baseline ใหม่ให้ตรงกับข้อมูลที่บันทึกสำเร็จแล้ว (deep copy ป้องกันการแก้ทับ)
+    ENTRY_SAVED_BASELINE[cat] = JSON.parse(JSON.stringify(newDataCat));
     DIRTY[cat] = false;
     updateTabDots();
     renderEntryMeta();
@@ -2233,6 +2550,159 @@ async function loadOverviewStats(){
       <div class="sub">บาท (ทุกสาขา / ทุกหมวด)</div>
     </div>
   `;
+}
+
+/* ============================================================
+   ผู้ใช้งานออนไลน์ (PRESENCE) — ดูว่า user ใดเข้าใช้งานระบบอยู่ตอนนี้
+   พร้อมปุ่มบังคับออกจากระบบ สำหรับกรณี session ค้างหรือเข้าระบบไม่ได้
+============================================================ */
+let ONLINE_USERS_REF = null;       // ref ของ presence node ทั้งหมด (สำหรับ on('value'))
+let ONLINE_USERS_CACHE = {};       // cache ข้อมูล presence ล่าสุดที่ได้รับ
+
+async function renderAdminOnlineUsers(){
+  setTopbar('ผู้ใช้งานออนไลน์', 'ตรวจสอบสถานะการเข้าใช้งานระบบ Real-time ของทุกสาขาและ Admin');
+  const content = document.getElementById('content');
+
+  content.innerHTML = `
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">สถานะการเข้าใช้งานระบบ</div>
+          <div class="muted">แสดงผลแบบ Real-time — รายการนี้จะอัปเดตอัตโนมัติเมื่อมีผู้ใช้ เข้า/ออก ระบบ</div>
+        </div>
+        <div class="pill pill-success" id="onlineCountBadge">🟢 0 คนออนไลน์</div>
+      </div>
+      <div id="onlineUsersWrap">
+        <div class="text-soft" style="padding:32px;text-align:center;">กำลังเชื่อมต่อ...</div>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <div class="card-head">
+        <div class="card-title">หมายเหตุการใช้งาน</div>
+      </div>
+      <div class="text-soft" style="font-size:13px;line-height:1.7;">
+        • สถานะ <span class="pill pill-success" style="vertical-align:middle;">🟢 Online</span> หมายถึงอุปกรณ์นั้นยังเชื่อมต่อกับระบบอยู่ขณะนี้<br>
+        • ระบบจะตัดสถานะ Online อัตโนมัติเมื่อปิดเบราว์เซอร์ ปิดแท็บ หรือเน็ตหลุด (ภายในไม่กี่วินาที)<br>
+        • หากพบสาขาที่ Online ค้างอยู่นานผิดปกติ หรือสาขาแจ้งว่าเข้าระบบไม่ได้ (เช่น ระบบแจ้งว่ามีการใช้งานซ้อน) สามารถกดปุ่ม <b>"บังคับออกจากระบบ"</b> เพื่อล้าง session นั้นได้ทันที
+      </div>
+    </div>
+  `;
+
+  // ── ฟัง Firebase 'presence/' แบบ real-time ด้วย on('value') ──
+  // ใช้ on() ไม่ใช่ dbGetOnce() เพราะหน้านี้ต้องอัปเดตทันทีเมื่อมีคน login/logout
+  if(ONLINE_USERS_REF){
+    try{ ONLINE_USERS_REF.off(); }catch(e){}
+  }
+  ONLINE_USERS_REF = db.ref('presence');
+  ONLINE_USERS_REF.on('value', (snap)=>{
+    ONLINE_USERS_CACHE = snap.val() || {};
+    renderOnlineUsersTable();
+  }, (err)=>{
+    console.warn('[renderAdminOnlineUsers] presence listener error:', err.message);
+    const wrap = document.getElementById('onlineUsersWrap');
+    if(wrap) wrap.innerHTML = `<div class="text-soft" style="padding:24px;text-align:center;">ไม่สามารถเชื่อมต่อสถานะออนไลน์ได้ (${escapeHtml(err.message)})</div>`;
+  });
+}
+
+function renderOnlineUsersTable(){
+  const wrap = document.getElementById('onlineUsersWrap');
+  const badge = document.getElementById('onlineCountBadge');
+  if(!wrap) return; // ออกจากหน้านี้ไปแล้ว
+
+  const entries = Object.entries(ONLINE_USERS_CACHE);
+  if(badge) badge.textContent = `🟢 ${entries.length} คนออนไลน์`;
+
+  if(entries.length === 0){
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:10px;">🌙</div>
+      <div style="font-size:13.5px;font-weight:700;color:var(--text-soft);">ไม่มีผู้ใช้งานออนไลน์ในขณะนี้</div>
+    </div>`;
+    return;
+  }
+
+  // เรียงตาม locNo (ถ้ามี) แล้วตามชื่อ
+  const sorted = entries.sort((a,b)=>{
+    const [, ua] = a, [, ub] = b;
+    const na = Number(ua.locNo) || 9999, nb = Number(ub.locNo) || 9999;
+    if(na !== nb) return na - nb;
+    return (ua.storeName||'').localeCompare(ub.storeName||'', 'th');
+  });
+
+  const now = Date.now();
+  const rows = sorted.map(([userKey, u])=>{
+    const isAdminUser = u.role === 'admin';
+    const label = isAdminUser
+      ? `<span class="pill pill-info">👤 Admin</span> ${escapeHtml(u.storeName||u.username||'-')}`
+      : `${escapeHtml(u.locNo||'-')} - ${escapeHtml(u.storeName||'-')}`;
+    const secondsAgo = Math.max(0, Math.round((now - (u.lastSeen||u.loginAt||now)) / 1000));
+    const lastSeenLabel = secondsAgo < 60 ? `${secondsAgo} วินาทีที่แล้ว` : fmtDateTime(u.lastSeen);
+    // ถ้า heartbeat ล่าสุดเกิน 90 วิ ถือว่าอาจหลุด/ค้าง (เผื่อ onDisconnect ยังไม่ทันลบ)
+    const stale = secondsAgo > 90;
+    return `<tr>
+      <td>${label}</td>
+      <td>
+        ${stale
+          ? `<span class="pill pill-warning">🟡 อาจไม่ตอบสนอง</span>`
+          : `<span class="pill pill-success">🟢 Online</span>`}
+      </td>
+      <td class="nowrap text-soft">${fmtDateTime(u.loginAt)}</td>
+      <td class="nowrap text-soft">${lastSeenLabel}</td>
+      <td class="text-faint" style="font-size:11px;max-width:200px;white-space:normal;">${escapeHtml(u.userAgent||'-')}</td>
+      <td class="nowrap">
+        <button class="btn btn-danger btn-sm" data-force-logout="${escapeHtml(userKey)}" data-session="${escapeHtml(u.sessionId||'')}">บังคับออกจากระบบ</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table class="dtable">
+        <thead><tr>
+          <th>ผู้ใช้งาน</th><th>สถานะ</th><th>เวลาเข้าระบบ</th><th>เห็นล่าสุด</th><th>อุปกรณ์ / เบราว์เซอร์</th><th>การจัดการ</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  wrap.querySelectorAll('[data-force-logout]').forEach(btn=>{
+    btn.addEventListener('click', ()=> confirmForceLogout(btn.dataset.forceLogout, btn.dataset.session));
+  });
+}
+
+function confirmForceLogout(userKey, sessionId){
+  const u = ONLINE_USERS_CACHE[userKey];
+  const label = u ? (u.role === 'admin' ? (u.storeName||u.username) : `${u.locNo||'-'} - ${u.storeName||'-'}`) : userKey;
+  showModal(`
+    <h3>ยืนยันการบังคับออกจากระบบ</h3>
+    <div class="text-soft" style="font-size:13px;margin-bottom:14px;">
+      ต้องการบังคับให้ <b>${escapeHtml(label)}</b> ออกจากระบบใช่หรือไม่?<br><br>
+      <span class="pill pill-warning">หมายเหตุ: หากผู้ใช้กำลังกรอกข้อมูลอยู่และยังไม่ได้กดบันทึก ข้อมูลที่กรอกไว้ในหน้านั้นจะหายไป</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="flCancelBtn">ยกเลิก</button>
+      <button class="btn btn-danger" id="flConfirmBtn">บังคับออกจากระบบ</button>
+    </div>
+  `, ()=>{
+    document.getElementById('flCancelBtn').addEventListener('click', closeModal);
+    document.getElementById('flConfirmBtn').addEventListener('click', ()=> doForceLogout(userKey, sessionId));
+  });
+}
+
+async function doForceLogout(userKey, sessionId){
+  try{
+    // เขียนคำสั่ง force-logout ไปที่ path ที่ session เป้าหมายกำลังฟังอยู่
+    // session นั้นจะเห็นคำสั่งนี้แบบ real-time แล้ว auto logout ตัวเอง (ดู startPresenceTracking)
+    await dbSet(`forceLogout/${userKey}`, { sessionId: sessionId || '', requestedAt: Date.now(), by: SESSION.username });
+    // ลบ presence ออกทันทีจากฝั่ง admin ด้วย เผื่อ client ปลายทางไม่ตอบสนอง (เช่นค้างจริง/ปิดไปแล้วแต่ onDisconnect ช้า)
+    await dbRemove(`presence/${userKey}`);
+    closeModal();
+    toast('สั่งบังคับออกจากระบบเรียบร้อย', 'success');
+  }catch(err){
+    console.error(err);
+    toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  }
 }
 
 /* ============================================================
@@ -3194,25 +3664,39 @@ async function loadDashboard(){
 
 /**
  * รวมมูลค่าตามหมวดหมู่ (รายเดือน)
+ * พร้อมแยกรายชื่อสาขาที่บันทึกแล้ว / ยังไม่บันทึก (ใช้แสดงในแดชบอร์ดแบบ 2 คอลัมน์)
  */
 async function computeCategorySums(month, storeFilter, isAdmin){
   const sums = { FRESH:0, TRANSFER:0, NONFRESH:0 };
   const storesSeen = new Set();
+  const submittedStores = []; // [{ storeCode, locNo, name, updatedAt, updatedBy }]
   const key = month.replace('-','_');
 
   if(isAdmin && storeFilter === 'ALL'){
     const data = await dbGetOnce(`counts/${key}`);
     if(data){
       Object.entries(data).forEach(([storeCode, rec])=>{
+        let storeHasData = false;
         ['FRESH','TRANSFER','NONFRESH'].forEach(cat=>{
           const catData = rec[cat];
           if(!catData) return;
           storesSeen.add(storeCode);
+          storeHasData = true;
           Object.entries(catData).forEach(([code, r])=>{
             const item = ITEM_MAP[cat][code] || placeholderItem(cat, code);
             sums[cat] += recordAmount(item, r);
           });
         });
+        if(storeHasData){
+          const s = getStoreByCode(storeCode);
+          submittedStores.push({
+            storeCode,
+            locNo: s ? s.locNo : '-',
+            name: s ? s.name : storeCode,
+            updatedAt: rec._meta ? rec._meta.updatedAt : null,
+            updatedBy: rec._meta ? rec._meta.updatedBy : null
+          });
+        }
       });
     }
   } else {
@@ -3231,15 +3715,29 @@ async function computeCategorySums(month, storeFilter, isAdmin){
     }
   }
 
-  return { sums, storeCount: storesSeen.size };
+  // ── สร้างรายชื่อสาขาที่ "ยังไม่บันทึก" จาก STORES_DATA ทั้งหมด หักลบสาขาที่บันทึกแล้ว ──
+  let notSubmittedStores = [];
+  if(isAdmin && storeFilter === 'ALL'){
+    const submittedCodes = new Set(submittedStores.map(s=> s.storeCode));
+    notSubmittedStores = STORES_DATA
+      .filter(s=> !submittedCodes.has(s.username))
+      .map(s=> ({ storeCode: s.username, locNo: s.locNo, name: s.name }));
+  }
+
+  // เรียงตาม locNo ทั้งสองฝั่งเพื่อให้ดูง่าย
+  submittedStores.sort((a,b)=> (Number(a.locNo)||9999) - (Number(b.locNo)||9999));
+  notSubmittedStores.sort((a,b)=> (Number(a.locNo)||9999) - (Number(b.locNo)||9999));
+
+  return { sums, storeCount: storesSeen.size, submittedStores, notSubmittedStores };
 }
 
 function renderDashboardResult(result, isAdmin, storeFilter){
   const bodyEl = document.getElementById('dashBody');
-  const { sums, storeCount } = result;
+  const { sums, storeCount, submittedStores, notSubmittedStores } = result;
   const freshValue = sums.FRESH;
+  const showStoreBreakdown = isAdmin && storeFilter === 'ALL';
 
-  if(freshValue === 0){
+  if(freshValue === 0 && !showStoreBreakdown){
     bodyEl.innerHTML = `
       <div style="padding:56px 24px;text-align:center;">
         <div style="font-size:48px;margin-bottom:12px;">📦</div>
@@ -3250,7 +3748,7 @@ function renderDashboardResult(result, isAdmin, storeFilter){
   }
 
   let extraInfo = '';
-  if(isAdmin && storeFilter === 'ALL'){
+  if(showStoreBreakdown){
     extraInfo = `สาขาที่มีข้อมูล <b class="num">${fmtNum(storeCount)}</b> / ${fmtNum(STORES_DATA.length)} สาขา`;
   } else {
     const label = isAdmin ? escapeHtml(storeLabel(storeFilter)) : `${SESSION.locNo} - ${SESSION.storeName}`;
@@ -3259,7 +3757,7 @@ function renderDashboardResult(result, isAdmin, storeFilter){
 
   const freshColor = CAT_COLORS.FRESH || '#1A9E6B';
 
-  bodyEl.innerHTML = `
+  const heroSection = freshValue > 0 ? `
     <!-- Hero KPI Card -->
     <div class="dash-hero-wrap">
       <div class="dash-hero-card">
@@ -3271,11 +3769,60 @@ function renderDashboardResult(result, isAdmin, storeFilter){
         </div>
         <div class="dash-hero-badge">FRESH FOOD</div>
       </div>
-    </div>
+    </div>` : '';
+
+  // ── ส่วนแบ่งซ้าย-ขวา: สาขาที่ยังไม่บันทึก / บันทึกแล้ว (เฉพาะ admin + เลือกทุกสาขา) ──
+  const storeBreakdownSection = showStoreBreakdown ? `
+    <div class="card mt-16" style="padding:0;overflow:hidden;">
+      <div class="card-head" style="padding:18px 20px 0;">
+        <div>
+          <div class="card-title">สถานะการบันทึกข้อมูลรายสาขา — ${thaiMonthLabel(DASH_MONTH)}</div>
+          <div class="muted">แบ่งสาขาตามสถานะ เพื่อให้ติดตามสาขาที่ยังไม่บันทึกได้ง่ายขึ้น</div>
+        </div>
+      </div>
+      <div class="dash-split-wrap">
+        <div class="dash-split-col dash-split-pending">
+          <div class="dash-split-head">
+            <span class="dash-split-dot" style="background:var(--danger);"></span>
+            ยังไม่บันทึกข้อมูล
+            <span class="pill pill-danger" style="margin-left:auto;">${fmtNum(notSubmittedStores.length)} สาขา</span>
+          </div>
+          <div class="dash-split-list">
+            ${notSubmittedStores.length === 0
+              ? `<div class="dash-split-empty">✅ ทุกสาขาบันทึกข้อมูลครบแล้ว</div>`
+              : notSubmittedStores.map(s=>`
+                <div class="dash-split-item">
+                  <span class="dash-split-loc">${escapeHtml(s.locNo)}</span>
+                  <span class="dash-split-name">${escapeHtml(s.name)}</span>
+                </div>`).join('')}
+          </div>
+        </div>
+        <div class="dash-split-col dash-split-done">
+          <div class="dash-split-head">
+            <span class="dash-split-dot" style="background:var(--success);"></span>
+            บันทึกข้อมูลแล้ว
+            <span class="pill pill-success" style="margin-left:auto;">${fmtNum(submittedStores.length)} สาขา</span>
+          </div>
+          <div class="dash-split-list">
+            ${submittedStores.length === 0
+              ? `<div class="dash-split-empty">ยังไม่มีสาขาบันทึกข้อมูลในเดือนนี้</div>`
+              : submittedStores.map(s=>`
+                <div class="dash-split-item">
+                  <span class="dash-split-loc">${escapeHtml(s.locNo)}</span>
+                  <span class="dash-split-name">${escapeHtml(s.name)}</span>
+                  <span class="dash-split-time">${s.updatedAt ? fmtDateTime(s.updatedAt) : ''}</span>
+                </div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>` : '';
+
+  bodyEl.innerHTML = `
+    ${heroSection}
 
     <!-- KPI Row -->
     <div class="dash-kpi-row">
-      ${isAdmin && storeFilter === 'ALL' ? `
+      ${showStoreBreakdown ? `
       <div class="dash-kpi-card">
         <div class="dash-kpi-icon">🏪</div>
         <div class="dash-kpi-body">
@@ -3292,14 +3839,16 @@ function renderDashboardResult(result, isAdmin, storeFilter){
           <div class="dash-progress-title">ข้อมูลสรุปเดือน ${thaiMonthLabel(DASH_MONTH)}</div>
           <div class="dash-progress-sub">${extraInfo}</div>
         </div>
-        <div class="dash-progress-pct num">${isAdmin && storeFilter==='ALL' ? Math.round(storeCount/STORES_DATA.length*100) : 100}%</div>
+        <div class="dash-progress-pct num">${showStoreBreakdown ? Math.round(storeCount/STORES_DATA.length*100) : 100}%</div>
       </div>
       <div class="dash-progress-bar-wrap">
         <div class="dash-progress-bar-track">
-          <div class="dash-progress-bar-fill" style="width:${isAdmin && storeFilter==='ALL' ? (storeCount/STORES_DATA.length*100).toFixed(1) : 100}%;background:${freshColor};"></div>
+          <div class="dash-progress-bar-fill" style="width:${showStoreBreakdown ? (storeCount/STORES_DATA.length*100).toFixed(1) : 100}%;background:${freshColor};"></div>
         </div>
       </div>
     </div>
+
+    ${storeBreakdownSection}
   `;
 }
 
@@ -3321,6 +3870,7 @@ const STORE_NAV = [
 const ADMIN_NAV = [
   { id:'dashboard', label:'แดชบอร์ด',            icon:'📊' },
   { id:'overview', label:'ภาพรวมระบบ',         icon:'📈' },
+  { id:'online',   label:'ผู้ใช้งานออนไลน์',     icon:'🟢' },
   { id:'data',     label:'ข้อมูลการตรวจนับ',     icon:'🧾' },
   { id:'items',    label:'รายการสินค้า',         icon:'📦' },
   { id:'months',   label:'จัดการเดือนที่เปิด/ปิด', icon:'📅' },
@@ -3373,6 +3923,9 @@ async function startApp(){
   }
 
   renderSidebar();
+
+  // เริ่มติดตามสถานะ online ของ session นี้ (สำหรับให้ admin ตรวจสอบได้)
+  startPresenceTracking();
 
   // Step 1: โหลด items จาก embedded data ทันที (synchronous)
   ensureItemsSeeded();
@@ -3512,6 +4065,13 @@ function setTopbar(title, sub){
    ROUTER
 ============================================================ */
 function navigateTo(viewId){
+  // ── cleanup listener ของหน้า "ผู้ใช้งานออนไลน์" เมื่อออกจากหน้านั้น ──
+  // ป้องกัน listener ค้างทำงานเปลือง bandwidth/ทรัพยากรเมื่อสลับไปหน้าอื่น
+  if(CURRENT_VIEW === 'online' && viewId !== 'online' && ONLINE_USERS_REF){
+    try{ ONLINE_USERS_REF.off(); }catch(e){}
+    ONLINE_USERS_REF = null;
+  }
+
   CURRENT_VIEW = viewId;
   setActiveNav(viewId);
 
@@ -3525,6 +4085,7 @@ function navigateTo(viewId){
 
     // Admin views
     case 'overview': return renderAdminOverview();
+    case 'online':   return renderAdminOnlineUsers();
     case 'data':     return renderAdminData();
     case 'items':    return renderAdminItems();
     case 'months':   return renderAdminMonths();
