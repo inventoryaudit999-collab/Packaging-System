@@ -3772,11 +3772,14 @@ function renderDashboardResult(result, isAdmin, storeFilter){
   // ── ส่วนแบ่งซ้าย-ขวา: สาขาที่ยังไม่บันทึก / บันทึกแล้ว (เฉพาะ admin + เลือกทุกสาขา) ──
   const storeBreakdownSection = showStoreBreakdown ? `
     <div class="card mt-16" style="padding:0;overflow:hidden;">
-      <div class="card-head" style="padding:18px 20px 0;">
+      <div class="card-head" style="padding:18px 20px 12px;">
         <div>
           <div class="card-title">สถานะการบันทึกข้อมูลรายสาขา — ${thaiMonthLabel(DASH_MONTH)}</div>
           <div class="muted">แบ่งสาขาตามสถานะ เพื่อให้ติดตามสาขาที่ยังไม่บันทึกได้ง่ายขึ้น</div>
         </div>
+        <button class="btn btn-accent" id="exportDashStatusBtn" style="gap:6px;">
+          📥 Export Excel
+        </button>
       </div>
       <div class="dash-split-wrap">
         <div class="dash-split-col dash-split-pending">
@@ -3848,11 +3851,97 @@ function renderDashboardResult(result, isAdmin, storeFilter){
 
     ${storeBreakdownSection}
   `;
+
+  // ── ผูกปุ่ม Export Excel ใน Dashboard (render หลัง innerHTML เสร็จแล้ว) ──
+  if(showStoreBreakdown){
+    const exportBtn = document.getElementById('exportDashStatusBtn');
+    if(exportBtn){
+      exportBtn.addEventListener('click', ()=>
+        exportDashboardStatus(DASH_MONTH, submittedStores, notSubmittedStores)
+      );
+    }
+  }
 }
 
 
 /* ===================== js/app.js ===================== */
 // ============================================================
+
+/* ============================================================
+   EXPORT DASHBOARD STATUS — Export Excel สถานะการบันทึกรายสาขา
+   Sheet 1: สรุป (Summary)
+   Sheet 2: สาขาที่ยังไม่บันทึก
+   Sheet 3: สาขาที่บันทึกแล้ว
+============================================================ */
+function exportDashboardStatus(month, submittedStores, notSubmittedStores){
+  const monthLabel = thaiMonthLabel(month);
+  const totalStores = STORES_DATA.length;
+  const doneCount = submittedStores.length;
+  const pendingCount = notSubmittedStores.length;
+  const pct = totalStores > 0 ? ((doneCount / totalStores) * 100).toFixed(1) : '0.0';
+  const exportedAt = new Date().toLocaleString('th-TH', { timeZone:'Asia/Bangkok' });
+
+  // ── Sheet 1: Summary ──
+  const summaryRows = [
+    { 'รายการ': 'เดือนที่รายงาน',           'ข้อมูล': monthLabel },
+    { 'รายการ': 'จำนวนสาขาทั้งหมด',         'ข้อมูล': totalStores },
+    { 'รายการ': 'บันทึกข้อมูลแล้ว',          'ข้อมูล': doneCount },
+    { 'รายการ': 'ยังไม่บันทึกข้อมูล',        'ข้อมูล': pendingCount },
+    { 'รายการ': 'ความคืบหน้า (%)',           'ข้อมูล': `${pct}%` },
+    { 'รายการ': 'วันเวลาที่ Export',          'ข้อมูล': exportedAt },
+  ];
+
+  // ── Sheet 2: สาขาที่ยังไม่บันทึก ──
+  const pendingRows = notSubmittedStores.map((s, idx) => ({
+    'ลำดับ':       idx + 1,
+    'Loc No.':     s.locNo   || '-',
+    'ชื่อสาขา':    s.name    || '-',
+    'รหัสผู้ใช้':  s.storeCode || '-',
+    'สถานะ':       'ยังไม่บันทึก',
+    'เวลาบันทึกล่าสุด': '-',
+    'บันทึกโดย':   '-',
+  }));
+  if(pendingRows.length === 0){
+    pendingRows.push({ 'ลำดับ': '-', 'Loc No.': '-', 'ชื่อสาขา': 'ทุกสาขาบันทึกข้อมูลครบแล้ว', 'รหัสผู้ใช้': '-', 'สถานะ': '-', 'เวลาบันทึกล่าสุด': '-', 'บันทึกโดย': '-' });
+  }
+
+  // ── Sheet 3: สาขาที่บันทึกแล้ว ──
+  const doneRows = submittedStores.map((s, idx) => ({
+    'ลำดับ':       idx + 1,
+    'Loc No.':     s.locNo   || '-',
+    'ชื่อสาขา':    s.name    || '-',
+    'รหัสผู้ใช้':  s.storeCode || '-',
+    'สถานะ':       'บันทึกแล้ว',
+    'เวลาบันทึกล่าสุด': s.updatedAt ? new Date(s.updatedAt).toLocaleString('th-TH', { timeZone:'Asia/Bangkok' }) : '-',
+    'บันทึกโดย':   s.updatedBy || '-',
+  }));
+  if(doneRows.length === 0){
+    doneRows.push({ 'ลำดับ': '-', 'Loc No.': '-', 'ชื่อสาขา': 'ยังไม่มีสาขาบันทึกข้อมูล', 'รหัสผู้ใช้': '-', 'สถานะ': '-', 'เวลาบันทึกล่าสุด': '-', 'บันทึกโดย': '-' });
+  }
+
+  // ── สร้าง Workbook ด้วย SheetJS ──
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Summary
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 28 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'สรุป');
+
+  // Sheet 2: ยังไม่บันทึก
+  const wsPending = XLSX.utils.json_to_sheet(pendingRows);
+  wsPending['!cols'] = [{ wch: 7 }, { wch: 10 }, { wch: 42 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, wsPending, `ยังไม่บันทึก (${pendingCount})`);
+
+  // Sheet 3: บันทึกแล้ว
+  const wsDone = XLSX.utils.json_to_sheet(doneRows);
+  wsDone['!cols'] = [{ wch: 7 }, { wch: 10 }, { wch: 42 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, wsDone, `บันทึกแล้ว (${doneCount})`);
+
+  // ── Download ──
+  const filename = `Dashboard_Status_${month}_Export_${new Date().toLocaleDateString('th-TH',{year:'2-digit',month:'2-digit',day:'2-digit'}).replace(/\//g,'-')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`Export เรียบร้อย — ${filename}`, 'success');
+}
 // app.js — Bootstrap, Sidebar, Navigation, Routing
 // ============================================================
 
