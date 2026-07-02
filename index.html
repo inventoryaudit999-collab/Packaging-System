@@ -1238,7 +1238,12 @@ function exportRowsToExcel(sheets, filename){
 
 /* ---------- Store helpers ---------- */
 function getStoreByCode(code){
-  return STORES_DATA.find(s=>s.username === code);
+  // ใช้ getMergedStores() เพื่อรองรับ override + deleted
+  // fallback ไป STORES_DATA ถ้า getMergedStores ยังไม่พร้อม (เช่น ก่อน loadStoresOverride)
+  if(STORES_OVERRIDE !== null || STORES_DELETED !== null){
+    return getMergedStores().find(s=> s.username === code);
+  }
+  return STORES_DATA.find(s=> s.username === code);
 }
 function storeLabel(code){
   const s = getStoreByCode(code);
@@ -1369,6 +1374,9 @@ async function findAccount(username, password){
   // ตรวจ STORES_DATA (built-in) ก่อน
   let s = STORES_DATA.find(s=> s.username === username && s.password === password);
   if(s){
+    // ตรวจว่าสาขานี้ถูกลบไปแล้วหรือไม่
+    if(STORES_DELETED === null) await loadStoresOverride();
+    if((STORES_DELETED||[]).includes(username)) return null;
     return { role:'store', username: s.username, storeCode: s.username, storeName: s.name, locNo: s.locNo };
   }
 
@@ -2479,7 +2487,7 @@ async function renderAdminOverview(){
       </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="label">FRESH FOOD</div><div class="value">${ITEMS_BY_CAT.FRESH.length}</div><div class="sub">รายการ &middot; ตรวจนับ F&amp;V / BUT / FISH</div></div>
-        <div class="stat-card"><div class="label">สาขาทั้งหมด</div><div class="value">${STORES_DATA.length}</div><div class="sub">สาขาในระบบ</div></div>
+        <div class="stat-card"><div class="label">สาขาทั้งหมด</div><div class="value">${getMergedStores().length}</div><div class="sub">สาขาในระบบ</div></div>
       </div>
     </div>
   `;
@@ -2499,7 +2507,7 @@ async function loadOverviewStats(){
   const data = await dbGetOnce(`counts/${key}`) || {};
   const storeCodes = Object.keys(data);
   const submitted = storeCodes.length;
-  const total = STORES_DATA.length;
+  const total = getMergedStores().length;
   const pct = total ? Math.round((submitted/total)*100) : 0;
   const active = await isMonthActive(month);
 
@@ -2709,7 +2717,7 @@ async function renderAdminData(){
   const thisMonth = todayStr().slice(0,7);
   const monthOpts = months.map(m=>`<option value="${m}" ${m===thisMonth?'selected':''}>${thaiMonthLabel(m)}</option>`).join('');
 
-  const storeOptions = STORES_DATA
+  const storeOptions = getMergedStores()
     .slice()
     .sort((a,b)=> Number(a.locNo) - Number(b.locNo))
     .map(s=>`<option value="${s.username}">${s.locNo} - ${escapeHtml(s.name)}</option>`).join('');
@@ -3179,7 +3187,7 @@ async function renderAdminLogs(){
   setTopbar('Log การใช้งาน', 'ประวัติการบันทึก / แก้ไข / ลบ ข้อมูล');
   const content = document.getElementById('content');
 
-  const storeOptions = STORES_DATA
+  const storeOptions = getMergedStores()
     .slice().sort((a,b)=> Number(a.locNo) - Number(b.locNo))
     .map(s=>`<option value="${s.username}">${s.locNo} - ${escapeHtml(s.name)}</option>`).join('');
 
@@ -3343,7 +3351,7 @@ async function renderAdminExport(){
   const thisMonth = todayStr().slice(0,7);
   const monthOpts = months.map(m=>`<option value="${m}" ${m===thisMonth?'selected':''}>${thaiMonthLabel(m)}</option>`).join('');
 
-  const storeChecks = STORES_DATA
+  const storeChecks = getMergedStores()
     .slice().sort((a,b)=> Number(a.locNo) - Number(b.locNo))
     .map(s=>`
       <label class="flex items-center gap-8" style="padding:4px 0;font-weight:500;font-size:13px;cursor:pointer;">
@@ -3379,7 +3387,7 @@ async function renderAdminExport(){
 
       <div class="mt-16">
         <div class="flex items-center justify-between" style="margin-bottom:8px;">
-          <div class="card-title" style="font-size:13px;">เลือกสาขา (${STORES_DATA.length} สาขา)</div>
+          <div class="card-title" style="font-size:13px;">เลือกสาขา (${getMergedStores().length} สาขา)</div>
           <div class="flex gap-8">
             <button class="btn btn-secondary btn-sm" id="expSelectAll">เลือกทั้งหมด</button>
             <button class="btn btn-secondary btn-sm" id="expSelectNone">ไม่เลือกเลย</button>
@@ -3506,7 +3514,7 @@ async function renderAdminClearAll(){
       <div class="card-head">
         <div>
           <div class="card-title">ล้างข้อมูลการตรวจนับทั้งหมด (ทุกสาขา)</div>
-          <div class="muted">ใช้สำหรับล้างข้อมูลตรวจนับของ <b>ทุกสาขา (${STORES_DATA.length} สาขา)</b> ในเดือนที่เลือกออกทั้งหมด</div>
+          <div class="muted">ใช้สำหรับล้างข้อมูลตรวจนับของ <b>ทุกสาขา (${getMergedStores().length} สาขา)</b> ในเดือนที่เลือกออกทั้งหมด</div>
         </div>
       </div>
 
@@ -3539,7 +3547,7 @@ function confirmClearMonth(){
   showModal(`
     <h3>ยืนยันการล้างข้อมูลทั้งหมด</h3>
     <div class="text-soft" style="font-size:13px;margin-bottom:14px;line-height:1.7;">
-      คุณกำลังจะลบข้อมูลการตรวจนับของ <b>ทุกสาขา (${STORES_DATA.length} สาขา)</b>
+      คุณกำลังจะลบข้อมูลการตรวจนับของ <b>ทุกสาขา (${getMergedStores().length} สาขา)</b>
       ในเดือน <b>${label}</b> ออกทั้งหมด<br><br>
       การลบนี้ <b style="color:var(--danger)">ไม่สามารถย้อนกลับได้</b><br><br>
       กรุณาพิมพ์ <code class="num" style="background:var(--surface-2);padding:2px 6px;border-radius:4px;">${month}</code> ในช่องด้านล่างเพื่อยืนยัน
@@ -3572,7 +3580,7 @@ async function executeClearMonth(month){
     await dbPush('logs', {
       ts: Date.now(), month, store: '-', storeName: 'ทุกสาขา',
       user: SESSION.username, action: 'BULK_DELETE', category: 'ALL',
-      changes: [{ itemCode:'-', itemDesc:`ล้างข้อมูลการตรวจนับทั้งหมดของเดือน ${thaiMonthLabel(month)} (ทุกสาขา ${STORES_DATA.length} สาขา)`, field:'-', oldVal:'-', newVal:'-' }]
+      changes: [{ itemCode:'-', itemDesc:`ล้างข้อมูลการตรวจนับทั้งหมดของเดือน ${thaiMonthLabel(month)} (ทุกสาขา ${getMergedStores().length} สาขา)`, field:'-', oldVal:'-', newVal:'-' }]
     });
 
     closeModal();
@@ -3601,7 +3609,7 @@ async function renderDashboardView(){
   const months = generateMonthRange('2026-06','2030-12');
   const monthOpts = months.map(m=>`<option value="${m}" ${(DASH_MONTH||thisMonth)===m?'selected':''}>${thaiMonthLabel(m)}</option>`).join('');
 
-  const storeOptions = isAdmin ? STORES_DATA.slice()
+  const storeOptions = isAdmin ? getMergedStores().slice()
     .sort((a,b)=> Number(a.locNo) - Number(b.locNo))
     .map(s=>`<option value="${s.username}" ${DASH_STORE===s.username?'selected':''}>${s.locNo} - ${escapeHtml(s.name)}</option>`).join('') : '';
 
@@ -3619,7 +3627,7 @@ async function renderDashboardView(){
         <div class="form-group" style="min-width:240px;">
           <label>สาขา</label>
           <select id="dashStore">
-            <option value="ALL" ${DASH_STORE==='ALL'?'selected':''}>-- ทุกสาขา (รวม ${STORES_DATA.length} สาขา) --</option>
+            <option value="ALL" ${DASH_STORE==='ALL'?'selected':''}>-- ทุกสาขา (รวม ${getMergedStores().length} สาขา) --</option>
             ${storeOptions}
           </select>
         </div>` : ''}
@@ -3712,7 +3720,7 @@ async function computeCategorySums(month, storeFilter, isAdmin){
   let notSubmittedStores = [];
   if(isAdmin && storeFilter === 'ALL'){
     const submittedCodes = new Set(submittedStores.map(s=> s.storeCode));
-    notSubmittedStores = STORES_DATA
+    notSubmittedStores = getMergedStores()
       .filter(s=> !submittedCodes.has(s.username))
       .map(s=> ({ storeCode: s.username, locNo: s.locNo, name: s.name }));
   }
@@ -3742,7 +3750,7 @@ function renderDashboardResult(result, isAdmin, storeFilter){
 
   let extraInfo = '';
   if(showStoreBreakdown){
-    extraInfo = `สาขาที่มีข้อมูล <b class="num">${fmtNum(storeCount)}</b> / ${fmtNum(STORES_DATA.length)} สาขา`;
+    extraInfo = `สาขาที่มีข้อมูล <b class="num">${fmtNum(storeCount)}</b> / ${fmtNum(getMergedStores().length)} สาขา`;
   } else {
     const label = isAdmin ? escapeHtml(storeLabel(storeFilter)) : `${SESSION.locNo} - ${SESSION.storeName}`;
     extraInfo = `สาขา <b>${label}</b>`;
@@ -3828,7 +3836,7 @@ function renderDashboardResult(result, isAdmin, storeFilter){
         </div>
         <div class="dash-kpi-body">
           <div class="dash-kpi-label">สาขาที่มีข้อมูล</div>
-          <div class="dash-kpi-value num">${fmtNum(storeCount)} <span class="dash-kpi-unit">/ ${fmtNum(STORES_DATA.length)} สาขา</span></div>
+          <div class="dash-kpi-value num">${fmtNum(storeCount)} <span class="dash-kpi-unit">/ ${fmtNum(getMergedStores().length)} สาขา</span></div>
         </div>
       </div>` : ''}
     </div>
@@ -3840,11 +3848,11 @@ function renderDashboardResult(result, isAdmin, storeFilter){
           <div class="dash-progress-title">ข้อมูลสรุปเดือน ${thaiMonthLabel(DASH_MONTH)}</div>
           <div class="dash-progress-sub">${extraInfo}</div>
         </div>
-        <div class="dash-progress-pct num">${showStoreBreakdown ? Math.round(storeCount/STORES_DATA.length*100) : 100}%</div>
+        <div class="dash-progress-pct num">${showStoreBreakdown ? Math.round(storeCount/getMergedStores().length*100) : 100}%</div>
       </div>
       <div class="dash-progress-bar-wrap">
         <div class="dash-progress-bar-track">
-          <div class="dash-progress-bar-fill" style="width:${showStoreBreakdown ? (storeCount/STORES_DATA.length*100).toFixed(1) : 100}%;background:${freshColor};"></div>
+          <div class="dash-progress-bar-fill" style="width:${showStoreBreakdown ? (storeCount/getMergedStores().length*100).toFixed(1) : 100}%;background:${freshColor};"></div>
         </div>
       </div>
     </div>
@@ -3875,7 +3883,7 @@ function renderDashboardResult(result, isAdmin, storeFilter){
 ============================================================ */
 function exportDashboardStatus(month, submittedStores, notSubmittedStores){
   const monthLabel = thaiMonthLabel(month);
-  const totalStores = STORES_DATA.length;
+  const totalStores = getMergedStores().length;
   const doneCount = submittedStores.length;
   const pendingCount = notSubmittedStores.length;
   const pct = totalStores > 0 ? ((doneCount / totalStores) * 100).toFixed(1) : '0.0';
@@ -4040,6 +4048,11 @@ async function startApp(){
   // Step 2: โหลด months active cache (1 round-trip สำหรับ active status ทั้งหมด)
   await loadMonthsCache();
 
+  // Step 2b: โหลด stores override + deleted list (เพื่อให้จำนวนสาขาถูกต้องทุกหน้า)
+  if(STORES_OVERRIDE === null || STORES_DELETED === null){
+    await loadStoresOverride();
+  }
+
   // Step 3: sync Firebase items ใน background (ไม่ block UI)
   loadItemsFromDB().catch(e=> console.warn('[startApp] Firebase items sync error:', e.message));
 
@@ -4190,20 +4203,31 @@ function setTopbar(title, sub){
 
 // override array โหลดจาก Firebase (null = ยังไม่ได้โหลด, [] = โหลดแล้วว่าง)
 let STORES_OVERRIDE = null;
+// deleted set — username ของสาขา Built-in ที่ถูกลบ
+let STORES_DELETED  = null;
 
 // รวม STORES_DATA กับ override จาก Firebase → ใช้งานทั่วทั้งระบบ
 function getMergedStores(){
-  if(!STORES_OVERRIDE || STORES_OVERRIDE.length === 0) return [...STORES_DATA];
-  const base = STORES_DATA.filter(s=> !STORES_OVERRIDE.find(o=> o.username === s.username));
-  return [...base, ...STORES_OVERRIDE].sort((a,b)=>(Number(a.locNo)||9999)-(Number(b.locNo)||9999));
+  const deletedSet = new Set(STORES_DELETED || []);
+  // สาขา built-in ที่ยังไม่ถูกลบ และไม่ได้ถูก override
+  const overrideUsernames = new Set((STORES_OVERRIDE || []).map(s=> s.username));
+  const base = STORES_DATA.filter(s=> !deletedSet.has(s.username) && !overrideUsernames.has(s.username));
+  // override จาก Firebase (ที่ยังไม่ถูกลบ)
+  const overrides = (STORES_OVERRIDE || []).filter(s=> !deletedSet.has(s.username));
+  return [...base, ...overrides].sort((a,b)=>(Number(a.locNo)||9999)-(Number(b.locNo)||9999));
 }
 
 async function loadStoresOverride(){
   try{
-    const data = await dbGetOnce('settings/storesOverride');
-    STORES_OVERRIDE = data ? Object.values(data) : [];
+    const [overrideData, deletedData] = await Promise.all([
+      dbGetOnce('settings/storesOverride'),
+      dbGetOnce('settings/storesDeleted'),
+    ]);
+    STORES_OVERRIDE = overrideData ? Object.values(overrideData) : [];
+    STORES_DELETED  = deletedData  ? Object.values(deletedData)  : [];
   }catch(e){
     STORES_OVERRIDE = [];
+    STORES_DELETED  = [];
     console.warn('[loadStoresOverride] error:', e.message);
   }
 }
@@ -4215,6 +4239,18 @@ async function saveStoresOverride(){
     await dbSet('settings/storesOverride', Object.keys(obj).length > 0 ? obj : null);
   }catch(e){
     console.error('[saveStoresOverride] error:', e.message);
+    throw e;
+  }
+}
+
+async function saveStoresDeleted(){
+  try{
+    const arr = [...new Set(STORES_DELETED || [])];
+    const obj = {};
+    arr.forEach((u, i)=>{ obj[`d${i}`] = u; });
+    await dbSet('settings/storesDeleted', arr.length > 0 ? obj : null);
+  }catch(e){
+    console.error('[saveStoresDeleted] error:', e.message);
     throw e;
   }
 }
@@ -4334,7 +4370,7 @@ function renderStoresTable(){
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           แก้ไข
         </button>
-        <button class="btn btn-danger btn-sm" data-delete="${escapeHtml(s.username)}" style="gap:4px;margin-left:4px;" ${!isOverride ? 'title="สาขา Built-in ไม่สามารถลบได้ แต่สามารถ override ได้"' : ''}>
+        <button class="btn btn-danger btn-sm" data-delete="${escapeHtml(s.username)}" style="gap:4px;margin-left:4px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
           ลบ
         </button>
@@ -4445,29 +4481,21 @@ function confirmDeleteStore(username){
   const all = getMergedStores();
   const s = all.find(x=> x.username === username);
   const overrideSet = new Set((STORES_OVERRIDE||[]).map(x=> x.username));
-  const isOverride = overrideSet.has(username);
-
-  if(!isOverride){
-    showModal(`
-      <h3>ไม่สามารถลบได้</h3>
-      <div class="text-soft" style="font-size:13px;line-height:1.6;">
-        สาขา <b>${escapeHtml(s?.name||username)}</b> เป็นสาขา <b>Built-in</b> ที่ฝังอยู่ในโค้ด<br>
-        ไม่สามารถลบผ่านหน้านี้ได้โดยตรง<br><br>
-        หากต้องการ override ให้กดปุ่ม <b>"แก้ไข"</b> เพื่อบันทึก override เข้า Firebase แทน
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeModal()">รับทราบ</button>
-        <button class="btn btn-primary" onclick="closeModal();openStoreModal('${escapeHtml(username)}')">ไปหน้าแก้ไข</button>
-      </div>
-    `);
-    return;
-  }
+  const isOverride  = overrideSet.has(username);
+  const isBuiltIn   = !isOverride;
 
   showModal(`
     <h3>ยืนยันการลบสาขา</h3>
-    <div class="text-soft" style="font-size:13px;margin-bottom:14px;">
-      ต้องการลบสาขา <b>${escapeHtml(s?.name||username)}</b> (${escapeHtml(username)}) ออกจากระบบหรือไม่?<br>
-      <span class="pill pill-warning" style="margin-top:8px;display:inline-flex;">ข้อมูลการตรวจนับของสาขานี้จะยังคงอยู่ใน Firebase</span>
+    <div class="text-soft" style="font-size:13px;margin-bottom:14px;line-height:1.6;">
+      ต้องการลบสาขา <b>${escapeHtml(s?.name||username)}</b><br>
+      <span style="font-family:var(--font-num);font-size:12px;color:var(--text-faint);">${escapeHtml(username)}</span>
+      ${isBuiltIn ? `
+        <div style="margin-top:10px;padding:10px 12px;background:var(--warning-soft);border-radius:var(--radius-sm);border-left:3px solid var(--warning);font-size:12px;color:#7a5800;">
+          <b>หมายเหตุ:</b> สาขานี้เป็นสาขา Built-in — จะถูกซ่อนจากระบบและไม่สามารถ Login ได้ ข้อมูลการตรวจนับใน Firebase ยังคงอยู่
+        </div>` : `
+        <div style="margin-top:10px;padding:8px 12px;background:var(--danger-soft);border-radius:var(--radius-sm);border-left:3px solid var(--danger);font-size:12px;color:var(--danger);">
+          ข้อมูลการตรวจนับของสาขานี้ใน Firebase จะยังคงอยู่
+        </div>`}
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="dcCancelBtn">ยกเลิก</button>
@@ -4475,16 +4503,25 @@ function confirmDeleteStore(username){
     </div>
   `, ()=>{
     document.getElementById('dcCancelBtn').addEventListener('click', closeModal);
-    document.getElementById('dcConfirmBtn').addEventListener('click', ()=> doDeleteStore(username));
+    document.getElementById('dcConfirmBtn').addEventListener('click', ()=> doDeleteStore(username, isBuiltIn));
   });
 }
 
-async function doDeleteStore(username){
+async function doDeleteStore(username, isBuiltIn){
   const s = getMergedStores().find(x=> x.username === username);
+  const btn = document.getElementById('dcConfirmBtn');
   try{
-    setLoading(document.getElementById('dcConfirmBtn'), true, 'กำลังลบ...');
-    STORES_OVERRIDE = (STORES_OVERRIDE||[]).filter(x=> x.username !== username);
-    await saveStoresOverride();
+    setLoading(btn, true, 'กำลังลบ...');
+    if(isBuiltIn){
+      // Built-in: เพิ่มเข้า deleted list ใน Firebase
+      if(!STORES_DELETED) STORES_DELETED = [];
+      if(!STORES_DELETED.includes(username)) STORES_DELETED.push(username);
+      await saveStoresDeleted();
+    } else {
+      // Override: ลบออกจาก override array
+      STORES_OVERRIDE = (STORES_OVERRIDE||[]).filter(x=> x.username !== username);
+      await saveStoresOverride();
+    }
     closeModal();
     renderStoresTable();
     toast(`ลบสาขา "${s?.name||username}" เรียบร้อย`, 'success');
