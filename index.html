@@ -1357,7 +1357,7 @@ let PRESENCE_REF = null;        // ref ของ presence node ของ session
 let FORCE_LOGOUT_REF = null;    // ref ที่ฟังคำสั่ง force-logout จาก admin
 const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36); // ID เฉพาะของ session นี้ (กันชนกันถ้า login หลาย tab/อุปกรณ์)
 
-function findAccount(username, password){
+async function findAccount(username, password){
   username = (username||'').trim();
   password = (password||'').trim();
   if(!username || !password) return null;
@@ -1365,10 +1365,22 @@ function findAccount(username, password){
   if(username === ADMIN_ACCOUNT.username && password === ADMIN_ACCOUNT.password){
     return { role:'admin', username, name: ADMIN_ACCOUNT.name };
   }
-  const s = STORES_DATA.find(s=> s.username === username && s.password === password);
+
+  // ตรวจ STORES_DATA (built-in) ก่อน
+  let s = STORES_DATA.find(s=> s.username === username && s.password === password);
   if(s){
     return { role:'store', username: s.username, storeCode: s.username, storeName: s.name, locNo: s.locNo };
   }
+
+  // ตรวจ override จาก Firebase (สาขาที่เพิ่มจากหน้าจัดการสาขา)
+  if(STORES_OVERRIDE === null){
+    await loadStoresOverride();
+  }
+  s = (STORES_OVERRIDE||[]).find(s=> s.username === username && s.password === password);
+  if(s){
+    return { role:'store', username: s.username, storeCode: s.username, storeName: s.name, locNo: s.locNo };
+  }
+
   return null;
 }
 
@@ -1391,11 +1403,14 @@ function clearSession(){
 function initLoginForm(){
   const form = document.getElementById('loginForm');
   const errBox = document.getElementById('loginError');
-  form.addEventListener('submit', (e)=>{
+  form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const u = document.getElementById('loginUser').value;
     const p = document.getElementById('loginPass').value;
-    const account = findAccount(u, p);
+    const loginBtn = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
+    if(loginBtn) setLoading(loginBtn, true, 'กำลังตรวจสอบ...');
+    const account = await findAccount(u, p);
+    if(loginBtn) setLoading(loginBtn, false);
     if(!account){
       errBox.style.display = 'block';
       return;
@@ -3945,6 +3960,7 @@ const ICONS = {
   logs:      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
   export:    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
   clear:     `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  stores:    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   entry:     `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
   history:   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.86"/></svg>`,
 };
@@ -3963,6 +3979,7 @@ const ADMIN_NAV = [
   { id:'data',      label:'ข้อมูลการตรวจนับ',        icon: ICONS.data      },
   { id:'items',     label:'รายการสินค้า',            icon: ICONS.items     },
   { section: 'ตั้งค่า & ดูแลระบบ' },
+  { id:'stores',    label:'จัดการสาขา',              icon: ICONS.stores    },
   { id:'months',    label:'จัดการเดือนที่เปิด/ปิด',  icon: ICONS.months    },
   { id:'logs',      label:'Log การใช้งาน',            icon: ICONS.logs      },
   { id:'export',    label:'Export ข้อมูล (ทุกสาขา)', icon: ICONS.export    },
@@ -4165,6 +4182,320 @@ function setTopbar(title, sub){
 /* ============================================================
    ROUTER
 ============================================================ */
+/* ============================================================
+   จัดการสาขา (ADMIN) — เพิ่ม / แก้ไข / ลบ สาขา
+   บันทึกลง Firebase settings/storesOverride แล้ว merge กับ STORES_DATA เดิม
+   สาขาใหม่จาก Firebase login ได้ด้วย username/password ที่กำหนด
+============================================================ */
+
+// override array โหลดจาก Firebase (null = ยังไม่ได้โหลด, [] = โหลดแล้วว่าง)
+let STORES_OVERRIDE = null;
+
+// รวม STORES_DATA กับ override จาก Firebase → ใช้งานทั่วทั้งระบบ
+function getMergedStores(){
+  if(!STORES_OVERRIDE || STORES_OVERRIDE.length === 0) return [...STORES_DATA];
+  const base = STORES_DATA.filter(s=> !STORES_OVERRIDE.find(o=> o.username === s.username));
+  return [...base, ...STORES_OVERRIDE].sort((a,b)=>(Number(a.locNo)||9999)-(Number(b.locNo)||9999));
+}
+
+async function loadStoresOverride(){
+  try{
+    const data = await dbGetOnce('settings/storesOverride');
+    STORES_OVERRIDE = data ? Object.values(data) : [];
+  }catch(e){
+    STORES_OVERRIDE = [];
+    console.warn('[loadStoresOverride] error:', e.message);
+  }
+}
+
+async function saveStoresOverride(){
+  try{
+    const obj = {};
+    (STORES_OVERRIDE || []).forEach(s=>{ obj[s.username] = s; });
+    await dbSet('settings/storesOverride', Object.keys(obj).length > 0 ? obj : null);
+  }catch(e){
+    console.error('[saveStoresOverride] error:', e.message);
+    throw e;
+  }
+}
+
+let STORES_SEARCH_TEXT = '';
+
+async function renderAdminStores(){
+  setTopbar('จัดการสาขา', 'Admin — Stores');
+  const content = document.getElementById('content');
+
+  content.innerHTML = `<div class="card" style="padding:20px 22px;">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
+      <div style="width:52px;height:52px;border-radius:12px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;border-left:4px solid var(--accent);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:800;">จัดการสาขา</div>
+        <div class="muted">เพิ่ม แก้ไข หรือลบสาขา · <span id="storeHeroCount" class="num" style="color:var(--accent);font-weight:700;">...</span> สาขา</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-16">
+    <div class="card-head" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-weight:800;font-size:14px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        รายการสาขาทั้งหมด <span id="storesCountBadge" class="text-soft" style="font-weight:600;font-size:13px;">...</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="addStoreBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          เพิ่มสาขาใหม่
+        </button>
+        <button class="btn btn-secondary" id="refreshStoresBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.86"/></svg>
+          รีเฟรช
+        </button>
+      </div>
+    </div>
+
+    <div class="form-group mt-8" style="max-width:480px;">
+      <label>ค้นหาสาขา</label>
+      <div style="position:relative;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint);pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="storeSearchInput" type="text" placeholder="เลขสาขา, ชื่อสาขา, Username..." value="${escapeHtml(STORES_SEARCH_TEXT)}" style="padding-left:34px;width:100%;">
+      </div>
+    </div>
+
+    <div style="background:var(--warning-soft);border:1px solid rgba(240,165,60,0.3);border-radius:var(--radius-sm);padding:10px 14px;margin-top:12px;font-size:12.5px;color:#b07800;display:flex;align-items:center;gap:8px;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <b>สาขาที่เพิ่มใหม่จาก Firebase จะ Login และใช้งานได้เหมือนสาขาเดิมทุกประการ</b>
+    </div>
+
+    <div class="table-wrap mt-12" id="storesTableWrap">
+      <div style="padding:32px;text-align:center;" class="text-soft">กำลังโหลด...</div>
+    </div>
+  </div>`;
+
+  document.getElementById('addStoreBtn').addEventListener('click', ()=> openStoreModal(null));
+  document.getElementById('refreshStoresBtn').addEventListener('click', ()=> reloadStoresTable());
+  let searchDebounce = null;
+  document.getElementById('storeSearchInput').addEventListener('input', e=>{
+    STORES_SEARCH_TEXT = e.target.value;
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(renderStoresTable, 200);
+  });
+
+  await reloadStoresTable();
+}
+
+async function reloadStoresTable(){
+  const wrap = document.getElementById('storesTableWrap');
+  if(wrap) wrap.innerHTML = '<div style="padding:32px;text-align:center;" class="text-soft">กำลังโหลดข้อมูลสาขา...</div>';
+  await loadStoresOverride();
+  renderStoresTable();
+}
+
+function renderStoresTable(){
+  const wrap = document.getElementById('storesTableWrap');
+  if(!wrap) return;
+
+  const all = getMergedStores();
+  const search = (STORES_SEARCH_TEXT||'').trim().toLowerCase();
+  const filtered = search
+    ? all.filter(s=> `${s.locNo} ${s.name} ${s.username}`.toLowerCase().includes(search))
+    : all;
+
+  // อัปเดต badge จำนวน
+  const heroCount = document.getElementById('storeHeroCount');
+  const countBadge = document.getElementById('storesCountBadge');
+  if(heroCount) heroCount.textContent = all.length;
+  if(countBadge) countBadge.textContent = search ? `${filtered.length} / ${all.length} สาขา` : `${all.length} สาขา`;
+
+  if(filtered.length === 0){
+    wrap.innerHTML = `<div style="padding:40px;text-align:center;">
+      <div style="margin:0 auto 10px;width:36px;height:36px;color:var(--text-faint)"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <div style="font-size:13.5px;font-weight:700;color:var(--text-soft);">ไม่พบสาขาที่ตรงกับการค้นหา</div>
+    </div>`;
+    return;
+  }
+
+  // ตรวจว่าสาขาใด override จาก Firebase (แก้ไขได้/ลบได้)
+  const overrideSet = new Set((STORES_OVERRIDE||[]).map(s=> s.username));
+
+  const rows = filtered.map((s, idx)=>{
+    const isOverride = overrideSet.has(s.username);
+    const badge = isOverride
+      ? `<span class="pill pill-info" style="font-size:10px;">Firebase</span>`
+      : `<span class="pill pill-muted" style="font-size:10px;">Built-in</span>`;
+    return `<tr>
+      <td class="num text-soft">${escapeHtml(s.locNo)}</td>
+      <td>${escapeHtml(s.name)} ${badge}</td>
+      <td class="nowrap" style="font-family:var(--font-num);font-size:12.5px;">${escapeHtml(s.username)}</td>
+      <td class="nowrap" style="font-family:var(--font-num);font-size:12.5px;color:var(--text-soft);">${escapeHtml(s.password)}</td>
+      <td class="nowrap" style="text-align:right;">
+        <button class="btn btn-secondary btn-sm" data-edit="${escapeHtml(s.username)}" style="gap:4px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          แก้ไข
+        </button>
+        <button class="btn btn-danger btn-sm" data-delete="${escapeHtml(s.username)}" style="gap:4px;margin-left:4px;" ${!isOverride ? 'title="สาขา Built-in ไม่สามารถลบได้ แต่สามารถ override ได้"' : ''}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          ลบ
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="dtable">
+      <thead><tr>
+        <th>เลขสาขา</th><th>ชื่อสาขา</th><th>USERNAME</th><th>PASSWORD</th><th style="text-align:right;">จัดการ</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  wrap.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> openStoreModal(btn.dataset.edit));
+  });
+  wrap.querySelectorAll('[data-delete]').forEach(btn=>{
+    btn.addEventListener('click', ()=> confirmDeleteStore(btn.dataset.delete));
+  });
+}
+
+function openStoreModal(usernameToEdit){
+  const all = getMergedStores();
+  const existing = usernameToEdit ? all.find(s=> s.username === usernameToEdit) : null;
+  const isNew = !existing;
+
+  showModal(`
+    <h3 style="margin:0 0 18px;">${isNew ? '+ เพิ่มสาขาใหม่' : 'แก้ไขสาขา'}</h3>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label>เลขสาขา (Loc No.) <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="ms_locNo" placeholder="เช่น 999" value="${escapeHtml(existing?.locNo||'')}" style="width:100%;">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label>ชื่อสาขา <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="ms_name" placeholder="เช่น บมจ.ซีพี แอ็กซ์ตร้า สาขาXXX" value="${escapeHtml(existing?.name||'')}" style="width:100%;">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label>Username <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="ms_username" placeholder="เช่น store999" value="${escapeHtml(existing?.username||'')}" ${!isNew ? 'readonly style="background:var(--surface-2);width:100%;"' : 'style="width:100%;"'}>
+      ${!isNew ? '<div style="font-size:11.5px;color:var(--text-faint);margin-top:4px;">Username ไม่สามารถเปลี่ยนได้ (เป็น key หลักของสาขา)</div>' : ''}
+    </div>
+    <div class="form-group" style="margin-bottom:4px;">
+      <label>Password <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="ms_password" placeholder="เช่น welcome1" value="${escapeHtml(existing?.password||'welcome1')}" style="width:100%;">
+    </div>
+    <div id="ms_error" style="color:var(--danger);font-size:12.5px;font-weight:600;margin-top:10px;display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="msCancelBtn">ยกเลิก</button>
+      <button class="btn btn-primary" id="msSaveBtn">${isNew ? 'เพิ่มสาขา' : 'บันทึกการเปลี่ยนแปลง'}</button>
+    </div>
+  `, ()=>{
+    document.getElementById('msCancelBtn').addEventListener('click', closeModal);
+    document.getElementById('msSaveBtn').addEventListener('click', ()=> doSaveStore(isNew, existing?.username));
+  });
+}
+
+async function doSaveStore(isNew, oldUsername){
+  const locNo    = document.getElementById('ms_locNo').value.trim();
+  const name     = document.getElementById('ms_name').value.trim();
+  const username = isNew ? document.getElementById('ms_username').value.trim() : oldUsername;
+  const password = document.getElementById('ms_password').value.trim();
+  const errEl    = document.getElementById('ms_error');
+
+  // Validation
+  if(!locNo || !name || !username || !password){
+    errEl.textContent = 'กรุณากรอกข้อมูลให้ครบทุกช่อง';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(isNew){
+    const all = getMergedStores();
+    if(all.find(s=> s.username === username)){
+      errEl.textContent = `Username "${username}" มีในระบบแล้ว กรุณาใช้ username อื่น`;
+      errEl.style.display = 'block';
+      return;
+    }
+    if(all.find(s=> s.locNo === locNo)){
+      errEl.textContent = `เลขสาขา "${locNo}" มีในระบบแล้ว`;
+      errEl.style.display = 'block';
+      return;
+    }
+  }
+
+  const btn = document.getElementById('msSaveBtn');
+  setLoading(btn, true, 'กำลังบันทึก...');
+  try{
+    if(!STORES_OVERRIDE) STORES_OVERRIDE = [];
+    // ลบของเดิมออกก่อน (กรณีแก้ไข)
+    STORES_OVERRIDE = STORES_OVERRIDE.filter(s=> s.username !== username);
+    // เพิ่มใหม่
+    STORES_OVERRIDE.push({ locNo, name, username, password });
+    await saveStoresOverride();
+    closeModal();
+    renderStoresTable();
+    toast(isNew ? `เพิ่มสาขา "${name}" เรียบร้อย` : `บันทึกการเปลี่ยนแปลง "${name}" เรียบร้อย`, 'success');
+  }catch(e){
+    errEl.textContent = 'บันทึกไม่สำเร็จ: ' + e.message;
+    errEl.style.display = 'block';
+    if(!STORES_OVERRIDE) STORES_OVERRIDE = [];
+  }finally{
+    setLoading(btn, false);
+  }
+}
+
+function confirmDeleteStore(username){
+  const all = getMergedStores();
+  const s = all.find(x=> x.username === username);
+  const overrideSet = new Set((STORES_OVERRIDE||[]).map(x=> x.username));
+  const isOverride = overrideSet.has(username);
+
+  if(!isOverride){
+    showModal(`
+      <h3>ไม่สามารถลบได้</h3>
+      <div class="text-soft" style="font-size:13px;line-height:1.6;">
+        สาขา <b>${escapeHtml(s?.name||username)}</b> เป็นสาขา <b>Built-in</b> ที่ฝังอยู่ในโค้ด<br>
+        ไม่สามารถลบผ่านหน้านี้ได้โดยตรง<br><br>
+        หากต้องการ override ให้กดปุ่ม <b>"แก้ไข"</b> เพื่อบันทึก override เข้า Firebase แทน
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">รับทราบ</button>
+        <button class="btn btn-primary" onclick="closeModal();openStoreModal('${escapeHtml(username)}')">ไปหน้าแก้ไข</button>
+      </div>
+    `);
+    return;
+  }
+
+  showModal(`
+    <h3>ยืนยันการลบสาขา</h3>
+    <div class="text-soft" style="font-size:13px;margin-bottom:14px;">
+      ต้องการลบสาขา <b>${escapeHtml(s?.name||username)}</b> (${escapeHtml(username)}) ออกจากระบบหรือไม่?<br>
+      <span class="pill pill-warning" style="margin-top:8px;display:inline-flex;">ข้อมูลการตรวจนับของสาขานี้จะยังคงอยู่ใน Firebase</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="dcCancelBtn">ยกเลิก</button>
+      <button class="btn btn-danger" id="dcConfirmBtn">ลบสาขา</button>
+    </div>
+  `, ()=>{
+    document.getElementById('dcCancelBtn').addEventListener('click', closeModal);
+    document.getElementById('dcConfirmBtn').addEventListener('click', ()=> doDeleteStore(username));
+  });
+}
+
+async function doDeleteStore(username){
+  const s = getMergedStores().find(x=> x.username === username);
+  try{
+    setLoading(document.getElementById('dcConfirmBtn'), true, 'กำลังลบ...');
+    STORES_OVERRIDE = (STORES_OVERRIDE||[]).filter(x=> x.username !== username);
+    await saveStoresOverride();
+    closeModal();
+    renderStoresTable();
+    toast(`ลบสาขา "${s?.name||username}" เรียบร้อย`, 'success');
+  }catch(e){
+    toast('ลบไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+/* ============================================================
+   Navigation
+============================================================ */
 function navigateTo(viewId){
   // ── cleanup listener ของหน้า "ผู้ใช้งานออนไลน์" เมื่อออกจากหน้านั้น ──
   // ป้องกัน listener ค้างทำงานเปลือง bandwidth/ทรัพยากรเมื่อสลับไปหน้าอื่น
@@ -4190,6 +4521,7 @@ function navigateTo(viewId){
     case 'data':     return renderAdminData();
     case 'items':    return renderAdminItems();
     case 'months':   return renderAdminMonths();
+    case 'stores':   return renderAdminStores();
     case 'logs':     return renderAdminLogs();
     case 'export':   return renderAdminExport();
     case 'clear':    return renderAdminClearAll();
