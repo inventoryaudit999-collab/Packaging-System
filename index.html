@@ -60,12 +60,12 @@
   --font-ui: 'Inter','Noto Sans Thai',-apple-system,BlinkMacSystemFont,sans-serif;
   --font-num: 'Roboto Mono','Noto Sans Thai',monospace;
 
-  /* Sidebar dark theme */
-  --sb-bg:        #0D1B35;
-  --sb-bg-hover:  rgba(255,255,255,0.07);
-  --sb-bg-active: rgba(255,255,255,0.12);
-  --sb-border:    rgba(255,255,255,0.08);
-  --sb-text:      rgba(255,255,255,0.62);
+  /* Sidebar blue theme — ตามภาพ Makro Blue */
+  --sb-bg:        #0B5FB4;
+  --sb-bg-hover:  rgba(255,255,255,0.12);
+  --sb-bg-active: rgba(255,255,255,0.20);
+  --sb-border:    rgba(255,255,255,0.15);
+  --sb-text:      rgba(255,255,255,0.75);
   --sb-text-act:  #FFFFFF;
 }
 
@@ -267,7 +267,7 @@ a{ color: var(--primary); text-decoration:none; }
   display:flex; flex-direction:column;
   position:fixed; top:0; bottom:0; left:0;
   z-index:40;
-  box-shadow: 4px 0 24px rgba(6,15,36,0.18);
+  box-shadow: 4px 0 24px rgba(7,64,127,0.35);
 }
 
 /* Subtle grid overlay on sidebar */
@@ -275,8 +275,8 @@ a{ color: var(--primary); text-decoration:none; }
   content:'';
   position:absolute; inset:0; pointer-events:none;
   background-image:
-    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
   background-size: 32px 32px;
   border-radius: inherit;
 }
@@ -337,9 +337,9 @@ a{ color: var(--primary); text-decoration:none; }
   color:var(--sb-text-act);
 }
 .nav-item.active{
-  background: linear-gradient(135deg, rgba(11,95,180,0.9) 0%, rgba(20,117,208,0.9) 100%);
+  background: rgba(255,255,255,0.22);
   color:#fff;
-  box-shadow: 0 4px 16px rgba(11,95,180,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.18);
 }
 /* Active indicator bar */
 .nav-item.active::before{
