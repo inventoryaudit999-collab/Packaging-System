@@ -137,7 +137,9 @@
       '</div></div>';
   }
 
-  fetch('data.json')
+  // ── Path resolution (works on GitHub Pages subdirectories) ──
+  var _base = location.href.replace(/\/[^\/]*$/, '/');
+  fetch(_base + 'data.json')
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.url);
       return r.json();
@@ -151,7 +153,7 @@
 
       // ── โหลด app.js หลัง data พร้อม ──────────────────────────
       var script    = document.createElement('script');
-      script.src    = 'app.js';
+      script.src    = _base + 'app.js';
       script.onerror = function() { showError('โหลด app.js ไม่ได้'); };
       document.body.appendChild(script);
     })

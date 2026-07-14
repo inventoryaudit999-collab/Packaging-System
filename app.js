@@ -2837,10 +2837,14 @@ const ADMIN_NAV = [
   { id:'clear',    label:'ล้างข้อมูลทั้งหมด',     icon:'🗑️' },
 ];
 
-document.addEventListener('DOMContentLoaded', ()=>{
+/* ── App Init ────────────────────────────────────────────────
+   เรียก _appInit() ทันทีถ้า DOM พร้อมแล้ว (กรณีโหลด app.js แบบ dynamic)
+   หรือรอ DOMContentLoaded ถ้า DOM ยังไม่พร้อม
+──────────────────────────────────────────────────────────── */
+function _appInit(){
   initLoginForm();
 
-  // Set Makro logo image (embedded as data URI in data.js)
+  // Set Makro logo image (data URI from data.json)
   document.querySelectorAll('.brand-logo').forEach(img=>{
     img.src = MAKRO_LOGO_DATA_URI;
   });
@@ -2857,7 +2861,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
     SESSION = restored;
     startApp();
   }
-});
+}
+
+// รองรับทั้งการโหลดปกติ และ dynamic script injection
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', _appInit);
+} else {
+  // DOM ready แล้ว (app.js ถูก inject หลัง fetch data.json)
+  _appInit();
+}
 
 function closeSidebar(){
   document.getElementById('sidebar').classList.remove('open');
