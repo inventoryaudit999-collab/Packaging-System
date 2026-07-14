@@ -1,6 +1,7 @@
 /* ============================================================
-   firebase.js — Firebase Configuration & Database Helpers
-   CP Axtra Makro Packaging Count System
+   firebase.js — Firebase Configuration, Init & Database Helpers
+   CP Axtra — Makro Packaging Count System
+   ตรวจสอบแล้ว: โหลดก่อน app.js เสมอ
 ============================================================ */
 
 const firebaseConfig = {
@@ -15,6 +16,9 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+// ── LocalStorage prefix ──────────────────────────────────────
+const LS_PREFIX = 'packing_fb_';
 
 function lsKey(path){ return LS_PREFIX + path.replace(/[^a-zA-Z0-9_]/g,'_'); }
 function lsGet(path){ try{ const v=localStorage.getItem(lsKey(path)); return v?JSON.parse(v):null; }catch(e){return null;} }
@@ -181,81 +185,3 @@ function stopPresenceTracking(){
     FORCE_LOGOUT_REF = null;
   }
 }
-
-
-/* ---------- Item helpers ---------- */
-const CAT_LABELS = { FRESH: 'FRESH FOOD', TRANSFER: 'TRANSFER', NONFRESH: 'NON FRESH' };
-const CAT_FIELD_LABELS = { FV: 'F&V', BUT: 'BUT', FISH: 'FISH', QTY: 'จำนวน' };
-
-function itemUnitCost(item){
-  const pack = Number(item.packCount) || 1;
-  const price = Number(item.price) || 0;
-  return price / pack;
-}
-function recordTotal(item, rec){
-  if(!rec) return 0;
-  return (item.subFields||[]).reduce((s,f)=> s + (Number(rec[f])||0), 0);
-}
-function recordAmount(item, rec){
-  return recordTotal(item, rec) * itemUnitCost(item);
-}
-
-/* ---------- Excel export ---------- */
-function exportRowsToExcel(sheets, filename){
-  // sheets: { 'ชื่อชีท': [ {col:val,...}, ... ] }
-  const wb = XLSX.utils.book_new();
-  Object.entries(sheets).forEach(([name, rows])=>{
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'ไม่มีข้อมูล': '' }]);
-    XLSX.utils.book_append_sheet(wb, ws, name.substring(0,31));
-  });
-  XLSX.writeFile(wb, filename);
-}
-
-/* ---------- Store helpers ---------- */
-function getStoreByCode(code){
-  return STORES_DATA.find(s=>s.username === code);
-}
-function storeLabel(code){
-  const s = getStoreByCode(code);
-  return s ? `${s.locNo} - ${s.name}` : code;
-}
-
-/* ---------- Export row builder (shared by store + admin export) ---------- */
-function buildExportRow(dateOrMonth, storeCode, cat, item, rec){
-  const s = getStoreByCode(storeCode);
-  const total = recordTotal(item, rec);
-  const amount = recordAmount(item, rec);
-  // Handle both 'YYYY-MM-DD' and 'YYYY-MM' formats
-  const label = dateOrMonth.length === 7 ? thaiMonthLabel(dateOrMonth) : thaiDate(dateOrMonth);
-  return {
-    'เดือน/วันที่': label,
-    'รหัสผู้ใช้สาขา': storeCode,
-    'เลขที่สาขา (Loc)': s ? s.locNo : '',
-    'ชื่อสาขา': s ? s.name : '',
-    'หมวดหมู่': CAT_LABELS[cat] || cat,
-    'รหัสสินค้า': item.code,
-    'รายการสินค้า': item.desc,
-    'ผู้ขาย/Supplier': item.supplier,
-    'หน่วยนับ': item.uomCount,
-    'F&V': cat === 'NONFRESH' ? '' : (Number(rec.FV)||0),
-    'BUT': cat === 'NONFRESH' ? '' : (Number(rec.BUT)||0),
-    'FISH': cat === 'NONFRESH' ? '' : (Number(rec.FISH)||0),
-    'จำนวน (Non Fresh)': cat === 'NONFRESH' ? (Number(rec.QTY)||0) : '',
-    'รวมจำนวนตรวจนับ': total,
-    'ราคาต่อหน่วยนับ (บาท)': Math.round(itemUnitCost(item)*100)/100,
-    'มูลค่ารวม (บาท)': Math.round(amount*100)/100
-  };
-}
-
-/* ---------- Dashboard helpers: colors + donut chart ---------- */
-const CAT_COLORS = {
-  FRESH: '#1FA97C',     // เขียว
-  TRANSFER: '#0B5FB4',  // น้ำเงิน (Makro)
-  NONFRESH: '#F5A623'   // ส้ม (Makro)
-};
-
-/**
- * สร้าง SVG Donut Chart
- * segments: [{ label, value, color }]
- * คืนค่า HTML string ของ <svg>
- */

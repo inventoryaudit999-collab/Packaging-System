@@ -107,43 +107,57 @@
 <div id="toast"></div>
 <div id="modalRoot"></div>
 
-<!-- ② Firebase SDK (compat) -->
+<!-- ② Firebase SDK (compat v10) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <!-- ③ Excel Export Library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<!-- ④ Firebase Config + DB Helpers -->
+<!-- ④ Firebase Config + DB Helpers (โหลดหลัง Firebase SDK) -->
 <script src="firebase.js"></script>
 
-<!-- ⑤ Boot: โหลด data.json แล้วค่อยโหลด app.js -->
+<!-- ⑤ Boot: โหลด data.json → inject globals → โหลด app.js -->
 <script>
-(function() {
+(function bootApp() {
+  'use strict';
+
+  function showError(msg) {
+    document.body.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;' +
+      'min-height:100vh;font-family:sans-serif;background:#F5F6F8;">' +
+      '<div style="text-align:center;padding:40px;max-width:480px;">' +
+      '<div style="font-size:56px;margin-bottom:20px;">⚠️</div>' +
+      '<div style="font-size:20px;font-weight:700;color:#E0483E;margin-bottom:8px;">' +
+      'ไม่สามารถโหลดข้อมูลได้</div>' +
+      '<div style="color:#6B7280;margin-bottom:12px;">กรุณาวางไฟล์ทั้ง 5 ไฟล์ไว้ในโฟลเดอร์เดียวกัน<br>' +
+      'แล้วเปิดผ่าน Web Server (ไม่ใช่เปิดไฟล์โดยตรง)</div>' +
+      '<div style="font-size:12px;color:#9AA1AC;background:#fff;padding:8px 12px;' +
+      'border-radius:8px;border:1px solid #E4E7EC;">' + msg + '</div>' +
+      '</div></div>';
+  }
+
   fetch('data.json')
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.url);
+      return r.json();
+    })
     .then(function(data) {
-      // Expose globals ที่ app.js ต้องการ
+      // ── ผูก globals ที่ app.js ต้องการ ──────────────────────
       window.ITEMS_DATA          = data.ITEMS_DATA;
       window.STORES_DATA         = data.STORES_DATA;
       window.ADMIN_ACCOUNT       = data.ADMIN_ACCOUNT;
       window.MAKRO_LOGO_DATA_URI = data.MAKRO_LOGO_DATA_URI;
 
-      // โหลด app.js หลัง data พร้อม
-      var s = document.createElement('script');
-      s.src = 'app.js';
-      document.body.appendChild(s);
+      // ── โหลด app.js หลัง data พร้อม ──────────────────────────
+      var script    = document.createElement('script');
+      script.src    = 'app.js';
+      script.onerror = function() { showError('โหลด app.js ไม่ได้'); };
+      document.body.appendChild(script);
     })
     .catch(function(err) {
-      console.error('[boot] Failed to load data.json:', err);
-      document.body.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;">' +
-        '<div style="text-align:center;padding:40px;">' +
-        '<div style="font-size:48px;margin-bottom:16px;">⚠️</div>' +
-        '<div style="font-size:18px;font-weight:700;color:#E0483E;">ไม่สามารถโหลดข้อมูลได้</div>' +
-        '<div style="margin-top:8px;color:#6B7280;">กรุณารีเฟรชหน้าเว็บ หรือตรวจสอบว่าไฟล์ data.json อยู่ในโฟลเดอร์เดียวกัน</div>' +
-        '<div style="margin-top:8px;font-size:12px;color:#9AA1AC;">' + err.message + '</div>' +
-        '</div></div>';
+      console.error('[boot] data.json load failed:', err);
+      showError(err.message);
     });
 })();
 </script>

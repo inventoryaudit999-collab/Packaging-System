@@ -1,5 +1,4 @@
-/* Makro Packaging Count — Design System */
-/* style.css — all styles */
+/* Makro Packaging Count — Design System | style.css */
 
 /* ============================================================
    Makro Packaging Count — Design System
@@ -867,4 +866,3 @@ tfoot td{
   .dash-split-pending{ border-right: none; border-bottom: 1px solid var(--border-soft); }
   .dash-split-col{ max-height: 320px; }
 }
-

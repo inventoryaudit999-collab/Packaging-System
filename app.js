@@ -1,11 +1,14 @@
 /* ============================================================
    app.js — Application Logic
-   Makro Packaging Count System
-   
-   Depends on: data.json (loaded as APP_DATA), firebase.js, style.css
+   CP Axtra — Makro Packaging Count System
+
+   โหลดหลังจาก: firebase.js และ data.json (window globals)
+   ต้องการ globals: ITEMS_DATA, STORES_DATA, ADMIN_ACCOUNT, MAKRO_LOGO_DATA_URI
+   ต้องการ from firebase.js: db, lsGet, lsSet, lsDel, dbGetOnce, dbUpdate,
+                              dbSet, dbPush, dbRemove, LS_PREFIX
 ============================================================ */
 
-/* ===== UTILS ===== */
+/* ===================== js/utils.js ===================== */
 // ============================================================
 // utils.js — ฟังก์ชันช่วยทั่วไป: Toast, Modal, วันที่, Firebase, Excel
 // ============================================================
@@ -99,108 +102,10 @@ function setLoading(btn, loading, loadingText='กำลังโหลด...'){
   }
 }
 
-/* ---------- Firebase helpers ---------- */
 
-// LocalStorage fallback สำหรับ path ที่อาจ PERMISSION_DENIED
-// ใช้สำหรับ settings/ และ counts/ เพื่อให้ทำงานได้แม้ Rules ยังไม่ถูกต้อง
-const LS_PREFIX = 'packing_fb_';
-
-function lsKey(path){ return LS_PREFIX + path.replace(/[^a-zA-Z0-9_]/g,'_'); }
-function lsGet(path){ try{ const v=localStorage.getItem(lsKey(path)); return v?JSON.parse(v):null; }catch(e){return null;} }
-function lsSet(path, val){ try{ localStorage.setItem(lsKey(path), JSON.stringify(val)); }catch(e){} }
-function lsDel(path){ try{ localStorage.removeItem(lsKey(path)); }catch(e){} }
-
-async function dbGetOnce(path){
-  try{
-    const snap = await db.ref(path).once('value');
-    const val = snap.val();
-    if(val !== null) lsSet(path, val); // cache ใน LS
-    return val;
-  }catch(e){
-    if(e.code === 'PERMISSION_DENIED' || String(e.message).includes('Permission denied')){
-      console.warn('[dbGetOnce] PERMISSION_DENIED for:', path, '— using localStorage fallback');
-      return lsGet(path);
-    }
-    throw e;
-  }
-}
-
-async function dbUpdate(updates, retries=3){
-  let lastErr;
-  for(let attempt = 0; attempt <= retries; attempt++){
-    try{
-      await db.ref().update(updates);
-      // cache ใน LS ด้วย
-      Object.entries(updates).forEach(([path, val])=>{
-        if(val === null) lsDel(path); else lsSet(path, val);
-      });
-      return; // สำเร็จ
-    }catch(e){
-      lastErr = e;
-      if(e.code === 'PERMISSION_DENIED' || String(e.message).includes('Permission denied')){
-        console.warn('[dbUpdate] PERMISSION_DENIED — saving to localStorage fallback');
-        Object.entries(updates).forEach(([path, val])=>{
-          if(val === null) lsDel(path); else lsSet(path, val);
-        });
-        return; // ไม่ throw — ให้ทำงานต่อได้
-      }
-      // Network error / timeout — retry ด้วย exponential backoff
-      if(attempt < retries){
-        const delay = 300 * Math.pow(2, attempt); // 300ms, 600ms, 1200ms
-        console.warn(`[dbUpdate] attempt ${attempt+1} failed (${e.message}) — retrying in ${delay}ms`);
-        await new Promise(r => setTimeout(r, delay));
-      }
-    }
-  }
-  throw lastErr;
-}
-
-async function dbSet(path, val){
-  try{
-    await db.ref(path).set(val);
-    if(val === null) lsDel(path); else lsSet(path, val);
-  }catch(e){
-    if(e.code === 'PERMISSION_DENIED' || String(e.message).includes('Permission denied')){
-      console.warn('[dbSet] PERMISSION_DENIED for:', path, '— saving to localStorage fallback');
-      if(val === null) lsDel(path); else lsSet(path, val);
-      return; // ไม่ throw
-    }
-    throw e;
-  }
-}
-
-async function dbPush(path, val){
-  try{
-    return db.ref(path).push(val);
-  }catch(e){
-    if(e.code === 'PERMISSION_DENIED' || String(e.message).includes('Permission denied')){
-      console.warn('[dbPush] PERMISSION_DENIED for:', path, '— skipping log (non-fatal)');
-      return; // log ไม่ได้ก็ไม่เป็นไร
-    }
-    throw e;
-  }
-}
-
-async function dbRemove(path){
-  try{
-    await db.ref(path).remove();
-    lsDel(path);
-  }catch(e){
-    if(e.code === 'PERMISSION_DENIED' || String(e.message).includes('Permission denied')){
-      console.warn('[dbRemove] PERMISSION_DENIED for:', path, '— removing from localStorage');
-      lsDel(path);
-      return;
-    }
-    throw e;
-  }
-}
-
-/* ============================================================
-   PRESENCE SYSTEM — ติดตามว่าผู้ใช้ใด online อยู่ตอนนี้
-   ใช้ Firebase '.info/connected' + onDisconnect() เพื่อความแม่นยำแบบ real-time
-   (ถ้าปิดเบราว์เซอร์/เน็ตหลุด Firebase จะลบสถานะ online ให้อัตโนมัติ)
-============================================================ */
-const HEARTBEAT_INTERVAL_MS = 30000; // อัปเดต lastSeen ทุก 30 วิ (เผื่อ onDisconnect ไม่ทำงานในบางกรณี เช่น browser crash)
+/* ---------- Presence Tracking ---------- */
+// ออนไลน์ tracking + force-logout (ใช้ db ที่นิยามใน firebase.js)
+const HEARTBEAT_INTERVAL_MS = 30000;
 let HEARTBEAT_TIMER = null;
 
 function startPresenceTracking(){
@@ -478,7 +383,11 @@ function initLoginForm(){
   });
 }
 
-/* ===== STORE VIEW ===== */
+
+/* ================================================================
+   STORE VIEW — บันทึกตรวจนับรายเดือน
+================================================================ */
+/* ===================== js/store-view.js ===================== */
 // ============================================================
 // store-view.js — หน้าจอสาขา: บันทึกตรวจนับรายเดือน + ประวัติ/Export
 // ============================================================
@@ -1487,7 +1396,11 @@ async function setMonthStatusDirect(month, active){
   }
 }
 
-/* ===== ADMIN VIEW ===== */
+
+/* ================================================================
+   ADMIN VIEW — ภาพรวม, ข้อมูล, สาขา, เดือน, Log, Export
+================================================================ */
+/* ===================== js/admin-view.js ===================== */
 // ============================================================
 // admin-view.js — หน้าจอผู้ดูแลระบบ (Admin)
 // ============================================================
@@ -2630,7 +2543,11 @@ async function executeClearMonth(month){
   }
 }
 
-/* ===== DASHBOARD ===== */
+
+/* ================================================================
+   DASHBOARD — แดชบอร์ดสรุปข้อมูล
+================================================================ */
+/* ===================== js/dashboard.js ===================== */
 // ============================================================
 // dashboard.js — แดชบอร์ดสรุปข้อมูล (ใช้ร่วมกันทั้งหน้าสาขาและ Admin)
 // ============================================================
@@ -2890,7 +2807,11 @@ function renderDashboardResult(result, isAdmin, storeFilter){
   `;
 }
 
-/* ===== APP BOOTSTRAP ===== */
+
+/* ================================================================
+   APP BOOTSTRAP — Sidebar, Router, DOMContentLoaded
+================================================================ */
+/* ===================== js/app.js ===================== */
 // ============================================================
 // app.js — Bootstrap, Sidebar, Navigation, Routing
 // ============================================================
