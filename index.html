@@ -23,7 +23,7 @@
 
     <!-- โลโก้ makro -->
     <div class="login-logo">
-      <img class="brand-logo" alt="makro">
+      <img class="brand-logo" alt="makro" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjQiIHdpZHRoPSIyMjAiIGhlaWdodD0iNjQiPjxzdHlsZT50ZXh0e2ZvbnQtZmFtaWx5OiJBcmlhbCBCbGFjayIsQXJpYWwsc2Fucy1zZXJpZjtmb250LXdlaWdodDo5MDA7ZmlsbDojRTAyMzFDO2xldHRlci1zcGFjaW5nOi0ycHg7Zm9udC1zaXplOjU4cHg7fTwvc3R5bGU+PHRleHQgeD0iMiIgeT0iNTYiPm1ha3JvPC90ZXh0Pjwvc3ZnPg==">
     </div>
 
     <!-- คำอธิบาย -->
@@ -67,7 +67,7 @@
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <div class="mark"><img class="brand-logo" alt="Makro"></div>
+      <div class="mark"><img class="brand-logo" alt="Makro" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjQiIHdpZHRoPSIyMjAiIGhlaWdodD0iNjQiPjxzdHlsZT50ZXh0e2ZvbnQtZmFtaWx5OiJBcmlhbCBCbGFjayIsQXJpYWwsc2Fucy1zZXJpZjtmb250LXdlaWdodDo5MDA7ZmlsbDojRTAyMzFDO2xldHRlci1zcGFjaW5nOi0ycHg7Zm9udC1zaXplOjU4cHg7fTwvc3R5bGU+PHRleHQgeD0iMiIgeT0iNTYiPm1ha3JvPC90ZXh0Pjwvc3ZnPg=="></div>
       <div>
         <div class="name" id="sbStoreName">&nbsp;</div>
         <div class="role" id="sbRole">&nbsp;</div>
@@ -134,27 +134,35 @@
 
   // ── Path resolution (works on GitHub Pages subdirectories) ──
   var _base = location.href.replace(/\/[^\/]*$/, '/');
+
+  function loadAppJs(data) {
+    window.ITEMS_DATA          = data.ITEMS_DATA          || window.ITEMS_DATA          || [];
+    window.STORES_DATA         = data.STORES_DATA         || window.STORES_DATA         || [];
+    window.ADMIN_ACCOUNT       = data.ADMIN_ACCOUNT       || window.ADMIN_ACCOUNT       || {};
+    window.MAKRO_LOGO_DATA_URI = data.MAKRO_LOGO_DATA_URI || window.MAKRO_LOGO_DATA_URI || '';
+    // อัปเดต logo ทันที
+    document.querySelectorAll('.brand-logo').forEach(function(img){
+      if(window.MAKRO_LOGO_DATA_URI) img.src = window.MAKRO_LOGO_DATA_URI;
+    });
+    var script    = document.createElement('script');
+    script.src    = _base + 'app.js';
+    script.onerror = function() { showError('โหลด app.js ไม่ได้ — กรุณาตรวจสอบไฟล์ app.js'); };
+    document.body.appendChild(script);
+  }
+
   fetch(_base + 'data.json')
     .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     })
     .then(function(data) {
-      // ── ผูก globals ที่ app.js ต้องการ ──────────────────────
-      window.ITEMS_DATA          = data.ITEMS_DATA;
-      window.STORES_DATA         = data.STORES_DATA;
-      window.ADMIN_ACCOUNT       = data.ADMIN_ACCOUNT;
-      window.MAKRO_LOGO_DATA_URI = data.MAKRO_LOGO_DATA_URI;
-
-      // ── โหลด app.js หลัง data พร้อม ──────────────────────────
-      var script    = document.createElement('script');
-      script.src    = _base + 'app.js';
-      script.onerror = function() { showError('โหลด app.js ไม่ได้'); };
-      document.body.appendChild(script);
+      loadAppJs(data);
     })
     .catch(function(err) {
       console.error('[boot] data.json load failed:', err);
-      showError(err.message);
+      // ถ้า data.json หาไม่เจอ — ลอง load app.js โดยตรงพร้อม fallback data
+      console.warn('[boot] Using fallback — app.js will load but needs data.json for full function');
+      loadAppJs({});
     });
 })();
 </script>
