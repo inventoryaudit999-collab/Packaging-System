@@ -57,30 +57,35 @@ function closeModal() {
 
 // ─── Auth ─────────────────────────────────────────────────────
 function findUser(username, password) {
-  // RSOA / Admin account
-  const admin = window.ADMIN_ACCOUNT || {};
-  if (username === admin.username && password === admin.password) {
-    return {
-      username: admin.username,
-      role:     admin.role || 'RSOA',
-      name:     admin.name || 'Regional SOA',
-      storeId:  null,
-      storeName:'Regional 1',
-      region:   admin.region || 1
-    };
+  // ── Admin / RSOA accounts (รองรับทั้ง list และ single object) ──
+  const admins = window.ADMIN_ACCOUNTS
+    ? (Array.isArray(window.ADMIN_ACCOUNTS) ? window.ADMIN_ACCOUNTS : [window.ADMIN_ACCOUNTS])
+    : (window.ADMIN_ACCOUNT ? [window.ADMIN_ACCOUNT] : []);
+
+  for (const a of admins) {
+    if (username === a.username && password === a.password) {
+      return {
+        username:  a.username,
+        role:      a.role      || 'RSOA',
+        name:      a.name      || 'Administrator',
+        storeId:   null,
+        storeName: 'ส่วนกลาง / Regional',
+        region:    a.region    || 1
+      };
+    }
   }
-  // Store SOA accounts
+
+  // ── Store SOA accounts ──
   const stores = window.STORES_DATA || [];
   for (const store of stores) {
-    const users = store.users || [];
-    for (const u of users) {
+    for (const u of (store.users || [])) {
       if (u.username === username && u.password === password) {
         return {
-          username: u.username,
-          role:     u.role || 'SOA',
-          name:     u.name || `SOA ${store.id}`,
-          storeId:  store.id,
-          storeName:`สาขา${store.nameEn || store.name} (${store.id})`
+          username:  u.username,
+          role:      u.role || 'SOA',
+          name:      u.name || `SOA ${store.id}`,
+          storeId:   store.id,
+          storeName: `${store.name || store.nameEn} (${store.id})`
         };
       }
     }

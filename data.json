@@ -1,10 +1,10 @@
 {
   "MAKRO_LOGO_DATA_URI": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjQiIHdpZHRoPSIyMjAiIGhlaWdodD0iNjQiPjxzdHlsZT50ZXh0e2ZvbnQtZmFtaWx5OiJBcmlhbCBCbGFjayIsQXJpYWwsc2Fucy1zZXJpZjtmb250LXdlaWdodDo5MDA7ZmlsbDojRTAyMzFDO2xldHRlci1zcGFjaW5nOi0ycHg7Zm9udC1zaXplOjU4cHg7fTwvc3R5bGU+PHRleHQgeD0iMiIgeT0iNTYiPm1ha3JvPC90ZXh0Pjwvc3ZnPg==",
   "ADMIN_ACCOUNT": {
-    "username": "rsoa_region1",
-    "password": "Rsoa@2025",
+    "username": "admin",
+    "password": "MakroAdmin#2026",
     "role": "RSOA",
-    "name": "Regional SOA – Region 1",
+    "name": "Administrator",
     "region": 1
   },
   "STORES_DATA": [
@@ -15,10 +15,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa011",
-          "password": "Soa@011",
+          "username": "store011",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 011"
+          "name": "SOA สาขา 011"
         }
       ]
     },
@@ -29,10 +29,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa001",
-          "password": "Soa@001",
+          "username": "store001",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 001"
+          "name": "SOA สาขา 001"
         }
       ]
     },
@@ -43,10 +43,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa002",
-          "password": "Soa@002",
+          "username": "store002",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 002"
+          "name": "SOA สาขา 002"
         }
       ]
     },
@@ -57,10 +57,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa003",
-          "password": "Soa@003",
+          "username": "store003",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 003"
+          "name": "SOA สาขา 003"
         }
       ]
     },
@@ -71,10 +71,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa004",
-          "password": "Soa@004",
+          "username": "store004",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 004"
+          "name": "SOA สาขา 004"
         }
       ]
     },
@@ -85,10 +85,10 @@
       "region": 1,
       "users": [
         {
-          "username": "soa006",
-          "password": "Soa@006",
+          "username": "store006",
+          "password": "welcome1",
           "role": "SOA",
-          "name": "SOA Store 006"
+          "name": "SOA สาขา 006"
         }
       ]
     }
@@ -303,6 +303,22 @@
       "name": "ถาดรองเค้ก 6 นิ้ว",
       "unit": "ใบ",
       "dept": "เบเกอรี่"
+    }
+  ],
+  "ADMIN_ACCOUNTS": [
+    {
+      "username": "admin",
+      "password": "MakroAdmin#2026",
+      "role": "RSOA",
+      "name": "Administrator",
+      "region": 1
+    },
+    {
+      "username": "rsoa_region1",
+      "password": "Rsoa@2025",
+      "role": "RSOA",
+      "name": "Regional SOA – Region 1",
+      "region": 1
     }
   ]
 }
